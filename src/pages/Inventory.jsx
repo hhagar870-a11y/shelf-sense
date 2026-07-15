@@ -141,6 +141,7 @@ if (typeof value === "number") {
       const month = months[m];
 
       const lastDay = new Date(year, month, 0).getDate();
+      console.log("Month:", month, "Year:", year, "Text:", text);
 
       return `${year}-${String(month).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}`;
     }
@@ -299,8 +300,10 @@ useEffect(() => {
 
 const getStatus = (expiry) => {
   const today = new Date();
-  const expiryDate = new Date(expiry);
+today.setHours(0, 0, 0, 0);
 
+const expiryDate = new Date(expiry);
+expiryDate.setHours(23, 59, 59, 999);
   const diffDays = Math.ceil(
     (expiryDate - today) / (1000 * 60 * 60 * 24)
   );

@@ -8,7 +8,7 @@ export function importExcel(file, callback) {
 
     const workbook = XLSX.read(data, {
       type: "array",
-      cellDates: true,
+      cellDates: false,
     });
 
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
