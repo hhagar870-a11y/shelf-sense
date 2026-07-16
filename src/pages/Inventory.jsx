@@ -287,15 +287,18 @@ if (
 
     return;
 }
-    const status = getStatus(medicine.expiry);
+const expiryList =
+  medicine.expiryDates && medicine.expiryDates.length
+    ? medicine.expiryDates
+    : [medicine.expiry];
+expiryList.forEach((expiryDate) => {
 
-    const row = worksheet.addRow({
-    name: medicine.name,
+const status = getStatus(expiryDate);
+
+const row = worksheet.addRow({    name: medicine.name,
     quantity: medicine.quantity,
-    expiry:
-        medicine.expiryDates && medicine.expiryDates.length
-            ? medicine.expiryDates.join("\n")
-            : medicine.expiry,
+  
+        expiry: expiryDate,
     shelf: medicine.shelf,
     status: status,
 });
@@ -354,6 +357,7 @@ if (medicine.expiryDates && medicine.expiryDates.length > 1) {
     }
 
   });
+});
 
   const buffer = await workbook.xlsx.writeBuffer();
 
