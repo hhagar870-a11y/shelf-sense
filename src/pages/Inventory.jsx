@@ -293,11 +293,15 @@ const expiryList =
     : [medicine.expiry];
 expiryList.forEach((expiryDate) => {
 
-const status = getStatus(
-  medicine.expiryDates && medicine.expiryDates.length
-    ? medicine.expiryDates[0]
-    : medicine.expiry
-);
+const statuses = expiryList.map((date) => getStatus(date));
+
+let status = "Safe";
+
+if (statuses.includes("Expired")) {
+  status = "Expired";
+} else if (statuses.includes("Near Expiry")) {
+  status = "Near Expiry";
+}
 const row = worksheet.addRow({    name: medicine.name,
     quantity: medicine.quantity,
   
