@@ -293,15 +293,42 @@ const expiryList =
     : [medicine.expiry];
 expiryList.forEach((expiryDate) => {
 
-const statuses = expiryList.map((date) => getStatus(date));
+const expiryList =
+  medicine.expiryDates && medicine.expiryDates.length
+    ? medicine.expiryDates
+    : [medicine.expiry];
 
-let status = "Safe";
+expiryList.forEach((expiryDate) => {
 
-if (statuses.includes("Expired")) {
-  status = "Expired";
-} else if (statuses.includes("Near Expiry")) {
-  status = "Near Expiry";
-}
+  const status = getStatus(expiryDate);
+
+  const row = worksheet.addRow({
+    name: medicine.name,
+    quantity: medicine.quantity,
+    expiry: expiryDate,
+    shelf: medicine.shelf,
+    status: status,
+  });
+
+  row.getCell(5).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: {
+      argb:
+        status === "Safe"
+          ? "2E7D32"
+          : status === "Near Expiry"
+          ? "EDC602"
+          : "D32F2F",
+    },
+  };
+
+  row.getCell(5).font = {
+    color: { argb: "FFFFFF" },
+    bold: true,
+  };
+
+});
 const row = worksheet.addRow({    name: medicine.name,
     quantity: medicine.quantity,
   
