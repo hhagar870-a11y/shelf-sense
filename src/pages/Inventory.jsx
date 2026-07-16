@@ -293,8 +293,11 @@ const expiryList =
     : [medicine.expiry];
 expiryList.forEach((expiryDate) => {
 
-const status = getStatus(expiryDate);
-
+const status = getStatus(
+  medicine.expiryDates && medicine.expiryDates.length
+    ? medicine.expiryDates[0]
+    : medicine.expiry
+);
 const row = worksheet.addRow({    name: medicine.name,
     quantity: medicine.quantity,
   
