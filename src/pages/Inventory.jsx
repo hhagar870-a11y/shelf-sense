@@ -109,6 +109,13 @@ if (editIndex !== null) {
   const normalizeDate = (value) => {
     console.log("DATE =", value);
   if (!value) return "";
+if (value instanceof Date) {
+  const year = value.getFullYear();
+  const month = value.getMonth() + 1;
+  const lastDay = new Date(year, month, 0).getDate();
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+}
 // Excel Serial Date (مثل 46844)
 if (typeof value === "number") {
     const excelDate = XLSX.SSF.parse_date_code(value);
