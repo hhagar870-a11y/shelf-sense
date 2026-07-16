@@ -26,6 +26,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import { useNavigate } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { importExcel } from "../utils/excelImporter";
+import { extractAllDates } from "../utils/dateParser";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
@@ -68,10 +69,11 @@ const [medicines, setMedicines] = useState(() => {
   ];
   })
 
-  const [newMedicine, setNewMedicine] = useState({
+ const [newMedicine, setNewMedicine] = useState({
   name: "",
   batch: "",
   expiry: "",
+  expiryDates: [""],
   quantity: "",
   shelf: "",
   barcode: "",
@@ -91,17 +93,30 @@ const [search, setSearch] = useState("");
 
 if (editIndex !== null) {
   const updatedMedicines = [...medicines];
-  updatedMedicines[editIndex] = newMedicine;
+  updatedMedicines[editIndex] = {
+    ...newMedicine,
+    expiry: newMedicine.expiryDates[0] || "",
+};
   setMedicines(updatedMedicines);
   setEditIndex(null);
 } else {
-  setMedicines([...medicines, newMedicine]);
+ setMedicines([
+    ...medicines,
+    {
+        ...newMedicine,
+        expiry: newMedicine.expiryDates[0] || "",
+    },
+]);
 }
     setNewMedicine({
-      name: "",
-      quantity: "",
-      expiry: "",
-    });
+    name: "",
+    batch: "",
+    quantity: "",
+    shelf: "",
+    barcode: "",
+    expiry: "",
+    expiryDates: [""],
+});
 
     setOpen(false);
     setEditIndex(null);
@@ -178,20 +193,31 @@ if (typeof value === "number") {
 
 
 
- importExcel(file, (rows) => {
-  const medicinesFromExcel = rows.map((item) => ({
-    name: item["Drug Name"] || "",
-    barcode: "",
-    batch: "",
-    expiry: normalizeDate(item["Expiry Date"]),
-    quantity: item["Quantity"] || "",
-    shelf: "",
-  }));
+importExcel(file, (rows) => {
 
+  const medicinesFromExcel = rows.map((item) => {
+
+    const expiryDates = extractAllDates(item["Expiry Date"]);
+console.log({
+  raw: item["Expiry Date"],
+  parsed: expiryDates,
+});
+    return {
+      name: item["Drug Name"] || "",
+      barcode: "",
+      batch: "",
+      expiry: expiryDates[0] || "",
+      expiryDates: expiryDates,
+      quantity: item["Quantity"] || "",
+      shelf: "",
+    };
+
+  });
 
   setMedicines(medicinesFromExcel);
 
-  alert("Excel imported successfully!");
+  alert("Excel imported successfully");
+
 });
 };
 
@@ -234,16 +260,55 @@ const handleExportExcel = async () => {
   };
 
   medicines.forEach((medicine) => {
+if (
+    !medicine.quantity &&
+    (!medicine.expiryDates || medicine.expiryDates.length === 0) &&
+    !medicine.expiry
+) {
+    const row = worksheet.addRow({
+        name: medicine.name,
+        quantity: "",
+        expiry: "",
+        shelf: "",
+        status: "",
+    });
 
+    row.eachCell((cell) => {
+        cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "D9F0FF" },
+        };
+
+        cell.font = {
+            bold: true,
+        };
+    });
+
+    return;
+}
     const status = getStatus(medicine.expiry);
 
     const row = worksheet.addRow({
-      name: medicine.name,
-      quantity: medicine.quantity,
-      expiry: medicine.expiry,
-      shelf: medicine.shelf,
-      status: status,
-    });
+    name: medicine.name,
+    quantity: medicine.quantity,
+    expiry:
+        medicine.expiryDates && medicine.expiryDates.length
+            ? medicine.expiryDates.join("\n")
+            : medicine.expiry,
+    shelf: medicine.shelf,
+    status: status,
+});
+
+
+row.getCell(3).alignment = {
+    wrapText: true,
+    vertical: "top",
+};
+
+if (medicine.expiryDates && medicine.expiryDates.length > 1) {
+    row.height = medicine.expiryDates.length * 18;
+}
 
     const statusCell = row.getCell(5);
 
@@ -399,7 +464,27 @@ return (
   .filter((medicine) =>
     medicine.name.toLowerCase().includes(search.toLowerCase())
   )
-  .map((medicine, index) => (
+  .map((medicine, index) => {
+    if (
+  !medicine.quantity &&
+  (!medicine.expiryDates || medicine.expiryDates.length === 0) &&
+  !medicine.expiry
+) {
+  return (
+    <TableRow
+      key={index}
+      sx={{
+        backgroundColor: "#d9f0ff",
+      }}
+    >
+      <TableCell colSpan={6}>
+        <strong>{medicine.name}</strong>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+return (
               <TableRow key={index}>
 
                 <TableCell>
@@ -411,39 +496,43 @@ return (
                 </TableCell>
 
                 <TableCell>
-                  {medicine.expiry}
-                </TableCell>
-<TableCell align="center">
-    <Chip
-        label={getStatus(medicine.expiry)}
+  {(medicine.expiryDates || [medicine.expiry]).map((date, i) => (
+    <Box key={i} mb={1}>
+      <Typography variant="body2">
+        {date}
+      </Typography>
+
+      <Chip
+        label={getStatus(date)}
         color={
-            getStatus(medicine.expiry) === "Safe"
-                ? "success"
-                : getStatus(medicine.expiry) === "Near Expiry"
-                ? "warning"
-                : "error"
+          getStatus(date) === "Safe"
+            ? "success"
+            : getStatus(date) === "Near Expiry"
+            ? "warning"
+            : "error"
         }
-        variant="filled"
         size="small"
-        sx={{
-  minWidth: 110,
-  borderRadius: "20px",
-  fontWeight: "bold",
-  "& .MuiChip-label": {
-    color: "#fff",
-  },
-}}
-    />
+        sx={{ mt: 0.5 }}
+      />
+    </Box>
+  ))}
 </TableCell>
+
 <TableCell align="center">
 
     <IconButton
-        color="primary"
         onClick={() => {
-            setNewMedicine(medicine);
-            setEditIndex(index);
-            setOpen(true);
-        }}
+    setNewMedicine({
+        ...medicine,
+        expiryDates:
+            medicine.expiryDates && medicine.expiryDates.length
+                ? [...medicine.expiryDates]
+                : [medicine.expiry || ""],
+    });
+
+    setEditIndex(index);
+    setOpen(true);
+}}
     >
         <EditIcon />
     </IconButton>
@@ -458,8 +547,9 @@ return (
 </TableCell>
 
               </TableRow>
-
-            ))}
+);
+})
+}
 
           </TableBody>
 
@@ -500,22 +590,38 @@ return (
             }
           />
 
-          <TextField
-            type="date"
-            fullWidth
-            margin="normal"
-            InputLabelProps={{
-              shrink: true,
-            }}
-            value={newMedicine.expiry}
-            onChange={(e) =>
-              setNewMedicine({
-                ...newMedicine,
-                expiry: e.target.value,
-              })
-            }
-          />
+         {newMedicine.expiryDates.map((date, index) => (
+    <TextField
+        key={index}
+        type="date"
+        fullWidth
+        margin="normal"
+        label={`Expiry ${index + 1}`}
+        InputLabelProps={{ shrink: true }}
+        value={date}
+        onChange={(e) => {
+            const dates = [...newMedicine.expiryDates];
+            dates[index] = e.target.value;
 
+            setNewMedicine({
+                ...newMedicine,
+                expiryDates: dates,
+            });
+        }}
+    />
+))}
+<Button
+    variant="outlined"
+    sx={{ mt: 1 }}
+    onClick={() =>
+        setNewMedicine({
+            ...newMedicine,
+            expiryDates: [...newMedicine.expiryDates, ""],
+        })
+    }
+>
+    + Add Expiry Date
+</Button>
         </DialogContent>
 
         <DialogActions>
