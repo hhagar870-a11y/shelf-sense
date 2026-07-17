@@ -1,3 +1,5 @@
+import { getDrugCategories } from "../data/getDrugCategories";
+import { availableLabels } from "../data/drugCategories";
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -33,7 +35,11 @@ import { saveAs } from "file-saver";
 function Inventory() {
     const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-
+const [labelOpen, setLabelOpen] = useState(false);
+const [labelMedicine, setLabelMedicine] = useState(null);
+const [labelName, setLabelName] = useState("");
+const [labelColor, setLabelColor] = useState("#FFD54F");
+const [labelIcon, setLabelIcon] = useState("🏷️");
 const [medicines, setMedicines] = useState(() => {
   const saved = localStorage.getItem("medicines");
 
@@ -82,30 +88,63 @@ const [medicines, setMedicines] = useState(() => {
 const [editIndex, setEditIndex] = useState(null);
 const [search, setSearch] = useState("");
   const handleSave = () => {
-    if (
-      !newMedicine.name ||
-      !newMedicine.quantity ||
-      !newMedicine.expiry
-    ) {
+   if (
+ !newMedicine.name ||
+ !newMedicine.quantity ||
+ !newMedicine.expiryDates[0]
+) {
       alert("Please fill all fields");
       return;
     }
 
 if (editIndex !== null) {
   const updatedMedicines = [...medicines];
-  updatedMedicines[editIndex] = {
-    ...newMedicine,
-    expiry: newMedicine.expiryDates[0] || "",
+  updatedMedicines[editIndex] ={
+ ...newMedicine,
+ expiry: newMedicine.expiryDates[0] || "",
+ categories: getDrugCategories(newMedicine.name),
+};
+const handleLabelSave = () => {
+  if (!labelName) return;
+
+  const updated = medicines.map((med) => {
+    if (med.id === labelMedicine.id) {
+      return {
+        ...med,
+        labels: [
+          ...(med.labels || []),
+          {
+            name: labelName,
+            color: labelColor,
+            icon: labelIcon,
+          },
+        ],
+      };
+    }
+
+    return med;
+  });
+
+  setMedicines(updated);
+  localStorage.setItem("medicines", JSON.stringify(updated));
+
+  setLabelOpen(false);
+  setLabelName("");
 };
   setMedicines(updatedMedicines);
   setEditIndex(null);
 } else {
+  console.log("NAME:", newMedicine.name);
+  console.log("CATEGORY:", getDrugCategories(newMedicine.name));
+
  setMedicines([
     ...medicines,
-    {
-        ...newMedicine,
-        expiry: newMedicine.expiryDates[0] || "",
-    },
+   {
+ ...newMedicine,
+ expiry: newMedicine.expiryDates[0] || "",
+ categories: getDrugCategories(newMedicine.name),
+ labels: []
+},
 ]);
 }
     setNewMedicine({
@@ -202,20 +241,27 @@ console.log({
   raw: item["Expiry Date"],
   parsed: expiryDates,
 });
-    return {
-      name: item["Drug Name"] || "",
-      barcode: "",
-      batch: "",
-      expiry: expiryDates[0] || "",
-      expiryDates: expiryDates,
-      quantity: item["Quantity"] || "",
-      shelf: "",
-    };
+   return {
+ name: item["Drug Name"] || "",
+ barcode:"",
+ batch:"",
+ expiry: expiryDates[0] || "",
+ expiryDates: expiryDates,
+ quantity:item["Quantity"] || "",
+ shelf:"",
+ categories:getDrugCategories(item["Drug Name"] || ""),
+ labels:item.labels || []
+}
 
   });
 
-  setMedicines(medicinesFromExcel);
-
+setMedicines(
+  medicinesFromExcel.map((med) => ({
+    ...med,
+    id: crypto.randomUUID(),
+    labels: []
+  }))
+);
   alert("Excel imported successfully");
 
 });
@@ -259,7 +305,9 @@ const handleExportExcel = async () => {
     fgColor: { argb: "1976D2" },
   };
 
-  medicines.forEach((medicine) => {
+medicines.forEach((medicine, index) => {
+
+const rowColor = index % 2 === 0 ? "E5E7EB" : "FFFFFF";    
 if (
     !medicine.quantity &&
     (!medicine.expiryDates || medicine.expiryDates.length === 0) &&
@@ -293,42 +341,8 @@ const expiryList =
     : [medicine.expiry];
 expiryList.forEach((expiryDate) => {
 
-const expiryList =
-  medicine.expiryDates && medicine.expiryDates.length
-    ? medicine.expiryDates
-    : [medicine.expiry];
+const status = getStatus(expiryDate);
 
-expiryList.forEach((expiryDate) => {
-
-  const status = getStatus(expiryDate);
-
-  const row = worksheet.addRow({
-    name: medicine.name,
-    quantity: medicine.quantity,
-    expiry: expiryDate,
-    shelf: medicine.shelf,
-    status: status,
-  });
-
-  row.getCell(5).fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: {
-      argb:
-        status === "Safe"
-          ? "2E7D32"
-          : status === "Near Expiry"
-          ? "EDC602"
-          : "D32F2F",
-    },
-  };
-
-  row.getCell(5).font = {
-    color: { argb: "FFFFFF" },
-    bold: true,
-  };
-
-});
 const row = worksheet.addRow({    name: medicine.name,
     quantity: medicine.quantity,
   
@@ -336,7 +350,13 @@ const row = worksheet.addRow({    name: medicine.name,
     shelf: medicine.shelf,
     status: status,
 });
-
+row.eachCell((cell) => {
+  cell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: rowColor },
+  };
+});
 
 row.getCell(3).alignment = {
     wrapText: true,
@@ -407,7 +427,26 @@ useEffect(() => {
     JSON.stringify(medicines)
   );
 }, [medicines]);
+const handleDeleteLabel = (medicineId, labelIndex) => {
+  const updated = medicines.map((med) => {
+    if (med.id === medicineId) {
+      return {
+        ...med,
+        labels: (med.labels || []).filter(
+          (_, i) => i !== labelIndex
+        )
+      };
+    }
+    return med;
+  });
 
+  setMedicines(updated);
+
+  localStorage.setItem(
+    "medicines",
+    JSON.stringify(updated)
+  );
+};
 const getStatus = (expiry) => {
   const today = new Date();
 today.setHours(0, 0, 0, 0);
@@ -515,9 +554,50 @@ return (
         backgroundColor: "#d9f0ff",
       }}
     >
-      <TableCell colSpan={6}>
-        <strong>{medicine.name}</strong>
-      </TableCell>
+    <TableCell colSpan={6}>
+  <strong>{medicine.name}</strong>
+ {medicine.labels?.map((label,index)=>(
+  <Chip
+    key={index}
+    label={`${label.icon} ${label.name}`}
+    onDelete={() => handleDeleteLabel(medicine.id,index)}
+    sx={{
+      backgroundColor: label.color,
+      marginLeft:"6px",
+      marginTop:"5px",
+      color:"#fff",
+      fontWeight:"bold"
+    }}
+  />
+))}
+
+{[...new Set(medicine.categories || getDrugCategories(medicine.name))].length > 0 && (    <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+{[...new Set(medicine.categories || getDrugCategories(medicine.name))].map((category, i) => (       <span
+  key={i}
+  style={{
+    padding: "4px 10px",
+    borderRadius: "15px",
+    fontSize: "12px",
+    fontWeight: "bold",
+   backgroundColor:
+  category === "High Alert"
+    ? "#E53935"
+    : category === "Hazardous"
+    ? "#8B5CF6"
+    : "#F4D03F",
+    color:
+      category === "High Alert" || category === "Hazardous"
+        ? "#fff"
+        : "#000",
+  }}
+>
+  {category === "High Alert" ? "⚠️ " : ""}
+  {category}
+</span>
+      ))}
+    </div>
+  )}
+</TableCell>
     </TableRow>
   );
 }
@@ -525,10 +605,55 @@ return (
 return (
               <TableRow key={index}>
 
-                <TableCell>
-                  {medicine.name}
-                </TableCell>
+              <TableCell>
+  <strong>{medicine.name}</strong>
 
+ {medicine.labels?.map((label,index)=>(
+  <Chip
+    key={index}
+    label={`${label.icon} ${label.name}`}
+    onDelete={() => handleDeleteLabel(medicine.id,index)}
+    sx={{
+      backgroundColor: label.color,
+      marginLeft:"6px",
+      marginTop:"5px",
+      color:"#fff",
+      fontWeight:"bold"
+    }}
+  />
+))}
+
+{[...new Set(medicine.categories || getDrugCategories(medicine.name))].map((category, i) => (   <span
+      key={i}
+      style={{
+        marginLeft: "6px",
+        padding: "4px 10px",
+        borderRadius: "15px",
+        fontSize: "12px",
+        fontWeight: "bold",
+       backgroundColor:
+ category === "High Alert"
+ ? "#E53935"
+ : category === "Hazardous"
+ ? "#8B5CF6"
+ : category === "Sound Alike"
+ ? "#FFD54F"
+ : category === "Look Alike"
+ ? "#FFD54F"
+ : "#ccc",
+
+color:
+ category === "Look Alike" || category === "Sound Alike"
+ ? "#000"
+ : "#fff",
+      }}
+    >
+{category === "High Alert" && "⚠️ "}
+{category === "Sound Alike" && "👂 "}
+{category === "Look Alike" && "👁️ "}
+{category}  </span>
+  ))}
+</TableCell>
                 <TableCell>
                   {medicine.quantity}
                 </TableCell>
@@ -571,16 +696,25 @@ return (
     setEditIndex(index);
     setOpen(true);
 }}
-    >
-        <EditIcon />
-    </IconButton>
+    IconButton>
+  <EditIcon />
+</IconButton>
 
-    <IconButton
-        color="error"
-        onClick={() => handleDelete(index)}
-    >
-        <DeleteIcon />
-    </IconButton>
+<IconButton
+  onClick={() => {
+    setLabelMedicine(medicine);
+    setLabelOpen(true);
+  }}
+>
+  🏷️
+</IconButton>
+
+<IconButton
+  color="error"
+  onClick={() => handleDelete(index)}
+>
+  <DeleteIcon />
+</IconButton>
 
 </TableCell>
 
@@ -670,13 +804,143 @@ return (
             Cancel
           </Button>
 
-          <Button onClick={handleSave}>
-    {editIndex !== null ? "Update" : "Save"}
+          <Button
+  onClick={() => {
+    const updated = medicines.map((med) =>
+      med.id === labelMedicine.id
+        ? {
+            ...med,
+            labels: [
+              ...(med.labels || []),
+              {
+                name: labelName,
+                color: labelColor,
+                icon: labelIcon,
+              },
+            ],
+          }
+        : med
+    );
+
+    setMedicines(updated);
+
+    localStorage.setItem(
+      "medicines",
+      JSON.stringify(updated)
+    );
+
+    setLabelOpen(false);
+    setLabelName("");
+    
+  }}
+>
+  Save
 </Button>
 
         </DialogActions>
 
+            </Dialog>
+
+
+      <Dialog 
+        open={labelOpen} 
+        onClose={() => setLabelOpen(false)}
+      >
+        <DialogTitle>
+          Add Label
+        </DialogTitle>
+
+        <DialogContent>
+          <TextField
+  fullWidth
+  label="Label Name"
+  value={labelName}
+  onChange={(e)=>setLabelName(e.target.value)}
+  margin="normal"
+/>
+         
+<Typography>
+  Choose Color
+</Typography>
+
+<input
+  type="color"
+  value={labelColor}
+  onChange={(e) => setLabelColor(e.target.value)}
+/>
+<Typography>
+ Choose Icon
+</Typography>
+
+<Box>
+ {[
+"🏷️",
+"⚠️",
+"👁️",
+"👂",
+"🔒",
+"🔊",
+"❄️",
+"💊"
+].map((icon)=>(
+   <Button
+    key={icon}
+    onClick={() => setLabelIcon(icon)}
+   >
+    {icon}
+   </Button>
+ ))}
+</Box>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setLabelOpen(false)}>
+            Cancel
+          </Button>
+
+        <Button
+ variant="contained"
+ onClick={() => {
+if(!labelName.trim()){
+  alert("Please enter label name");
+  return;
+}
+  const updated = medicines.map((med) => {
+    if (med.id === labelMedicine.id) {
+      return {
+        ...med,
+        labels:[
+          ...(med.labels || []),
+          {
+ name: labelName.trim(),
+ color: labelColor,
+ icon: labelIcon
+}
+        ]
+      };
+    }
+
+    return med;
+  });
+
+  setMedicines(updated);
+
+  localStorage.setItem(
+    "medicines",
+    JSON.stringify(updated)
+  );
+
+  setLabelOpen(false);
+  setLabelName("");
+
+ }}
+>
+ Save
+</Button>
+        </DialogActions>
+
       </Dialog>
+
 
     </Container>
   );
