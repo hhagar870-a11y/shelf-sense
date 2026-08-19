@@ -134,7 +134,7 @@ function MawsoolOrders() {
       >
         <Box 
           component="img" 
-src="/موصول.jpg"
+src="/mawsool-banner.jpg"
           alt="Mawsool Banner" 
           sx={{ width: "100%", height: { xs: "220px", sm: "320px", md: "420px" }, objectFit: "contain", display: "block", mx: "auto" }} 
         />
