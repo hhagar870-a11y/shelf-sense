@@ -1182,28 +1182,107 @@ const filteredMedicines = useMemo(() => {
 return (
 <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
 
-  {/* =====================================================
-      PAGE HEADER
-  ===================================================== */}
+{/* =====================================================
+    INVENTORY HEADER — CLEAN & ORGANIZED
+===================================================== */}
 
+<Box
+  sx={{
+    mb: 3,
+    pb: 2.5,
+    borderBottom: "1px solid #e5e7eb",
+  }}
+>
+  {/* LOGO */}
   <Box
     sx={{
       display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      mb: 3,
-      flexWrap: "wrap",
-      gap: 2,
+      justifyContent: "center",
+      mb: 2,
     }}
   >
+    <Box
+      component="img"
+      src="/logo.png"
+      alt="Hail Health Cluster"
+      sx={{
+        width: 220,
+        height: "auto",
+        display: "block",
+        objectFit: "contain",
+      }}
+    />
+  </Box>
 
-    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+  {/* SEARCH */}
+  <Box
+    sx={{
+      width: "100%",
+      maxWidth: "740px",
+      mx: "auto",
+      mb: 3,
+    }}
+  >
+    <TextField
+      fullWidth
+      placeholder="Search by name, code, or line no..."
+      size="medium"
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      sx={{
+        "& .MuiOutlinedInput-root": {
+          borderRadius: "14px",
+          bgcolor: "#f8fafc",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
 
+          "& fieldset": {
+            borderColor: "#cbd5e1",
+          },
+
+          "&:hover fieldset": {
+            borderColor: "#94a3b8",
+          },
+
+          "&.Mui-focused fieldset": {
+            borderColor: "#2563eb",
+            borderWidth: "1.5px",
+          },
+        },
+
+        "& input": {
+          fontSize: "1rem",
+          py: 1.5,
+        },
+      }}
+    />
+  </Box>
+
+  {/* TITLE + ACTIONS */}
+  <Box
+    sx={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      width: "100%",
+      gap: 3,
+    }}
+  >
+    {/* LEFT — TITLE */}
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+        flexShrink: 0,
+      }}
+    >
       <IconButton
         onClick={() => navigate("/Dashboard")}
         sx={{
           bgcolor: "#f3f4f6",
-          "&:hover": { bgcolor: "#e5e7eb" },
+          "&:hover": {
+            bgcolor: "#e5e7eb",
+          },
           width: 42,
           height: 42,
         }}
@@ -1231,15 +1310,23 @@ return (
         sx={{
           fontWeight: 700,
           color: "#1f2937",
+          whiteSpace: "nowrap",
         }}
       >
         Inventory
       </Typography>
-
     </Box>
 
-    <Stack direction="row" spacing={2} sx={{ flexWrap: "wrap", alignItems: "flex-start" }}>
-
+    {/* RIGHT — ALL ACTION BUTTONS IN ONE GROUP */}
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: 1.5,
+        flexShrink: 0,
+      }}
+    >
       <Button
         variant="contained"
         onClick={() => {
@@ -1262,8 +1349,9 @@ return (
         sx={{
           borderRadius: "12px",
           textTransform: "none",
-          px: 3,
+          px: 2.5,
           py: 1,
+          whiteSpace: "nowrap",
         }}
       >
         + Add Medicine
@@ -1275,6 +1363,9 @@ return (
         sx={{
           borderRadius: "12px",
           textTransform: "none",
+          px: 2,
+          py: 1,
+          whiteSpace: "nowrap",
         }}
       >
         Import Excel (Merge)
@@ -1287,31 +1378,65 @@ return (
         />
       </Button>
 
-      {/* Export Excel = يعمل أيضًا كنسخة احتياطية للمخزون؛ نعرض تحته
-          تاريخ آخر مرة انسحبت فيها نسخة، عشان يبين الوضع بسرعة */}
-      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0.5 }}>
-        <Button
-          variant="outlined"
-          color="success"
-          onClick={() => setExportDialogOpen(true)}
-          sx={{
-            borderRadius: "12px",
-            textTransform: "none",
-          }}
-        >
-          Export Excel
-        </Button>
+{/* EXPORT + LAST BACKUP */}
+<Box
+  sx={{
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 0.5,
+    minWidth: 150,
+  }}
+>
+  <Button
+    variant="outlined"
+    color="success"
+    onClick={() => setExportDialogOpen(true)}
+    sx={{
+      borderRadius: "12px",
+      textTransform: "none",
+      px: 2,
+      py: 1,
+      whiteSpace: "nowrap",
+      width: "100%",
+    }}
+  >
+    Export Excel
+  </Button>
 
-        <Typography
-          sx={{
-            fontSize: "11px",
-            color: "#9ca3af",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Last backup: {formatBackupDate(lastBackupDate)}
-        </Typography>
-      </Box>
+  {/* Last Backup */}
+  <Box
+    sx={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 0.6,
+      mt: 0.2,
+    }}
+  >
+    <Box
+      component="span"
+      sx={{
+        width: 6,
+        height: 6,
+        borderRadius: "50%",
+        bgcolor: "#20ae54",
+        flexShrink: 0,
+      }}
+    />
+
+    <Typography
+      sx={{
+        fontSize: "10.5px",
+        color: "#94a3b8",
+        lineHeight: 1.2,
+        whiteSpace: "nowrap",
+      }}
+    >
+      Last backup: {formatBackupDate(lastBackupDate)}
+    </Typography>
+  </Box>
+</Box>
 
       <Button
         variant="outlined"
@@ -1320,97 +1445,168 @@ return (
         sx={{
           borderRadius: "12px",
           textTransform: "none",
+          px: 2,
+          py: 1,
+          whiteSpace: "nowrap",
         }}
       >
         Clear Inventory
       </Button>
-
-    </Stack>
-
+    </Box>
   </Box>
+</Box>
 
-  <Box
+
+{/* =====================================================
+    FILTERS
+===================================================== */}
+
+<Box
   sx={{
     display: "flex",
+    alignItems: "center",
+    width: "100%",
     gap: 2,
     mb: 3,
-    flexWrap: "wrap",
-    alignItems: "center",
   }}
 >
-  <TextField
-    placeholder="Search by name, code, or line no..."
+  {/* CATEGORY */}
+  <FormControl
     size="small"
-    value={search}
-    onChange={(e) => setSearch(e.target.value)}
-    sx={{ minWidth: 320 }}
-  />
+    sx={{
+      minWidth: 205,
 
-  {/* بوكس التصنيف (Category) */}
-  <FormControl 
-    size="small" 
-    sx={{ 
-      minWidth: 180,
       "& .MuiOutlinedInput-root": {
-        bgcolor: selectedCategory !== "All" ? "#eff6ff" : "transparent",
-        fieldset: {
-          borderColor: selectedCategory !== "All" ? "#2563eb" : "rgba(0, 0, 0, 0.23)",
-          borderWidth: selectedCategory !== "All" ? "2px" : "1px",
-        }
-      }
+        bgcolor:
+          selectedCategory !== "All"
+            ? "#eff6ff"
+            : "transparent",
+
+        "& fieldset": {
+          borderColor:
+            selectedCategory !== "All"
+              ? "#2563eb"
+              : "rgba(0, 0, 0, 0.23)",
+
+          borderWidth:
+            selectedCategory !== "All"
+              ? "2px"
+              : "1px",
+        },
+      },
     }}
   >
-    <InputLabel sx={{ fontWeight: selectedCategory !== "All" ? 700 : 400, color: selectedCategory !== "All" ? "#2563eb" : "inherit" }}>
+    <InputLabel
+      sx={{
+        fontWeight:
+          selectedCategory !== "All" ? 700 : 400,
+
+        color:
+          selectedCategory !== "All"
+            ? "#2563eb"
+            : "inherit",
+      }}
+    >
       Category {selectedCategory !== "All" && "●"}
     </InputLabel>
 
     <Select
       value={selectedCategory}
       label="Category"
-      onChange={(e) => setSelectedCategory(e.target.value)}
+      onChange={(e) =>
+        setSelectedCategory(e.target.value)
+      }
     >
-     <MenuItem value="All">All Categories</MenuItem>
-     {availableLabels.map((label) => (
-       <MenuItem key={label.name} value={label.name}>
-         {label.name}
-       </MenuItem>
-     ))}
+      <MenuItem value="All">
+        All Categories
+      </MenuItem>
+
+      {availableLabels.map((label) => (
+        <MenuItem
+          key={label.name}
+          value={label.name}
+        >
+          {label.name}
+        </MenuItem>
+      ))}
     </Select>
   </FormControl>
 
-  {/* بوكس الحالة (Status) - باللون الأزرق المتناسق تماماً */}
-  <FormControl 
-    size="small" 
-    sx={{ 
-      minWidth: 180,
+
+  {/* STATUS */}
+  <FormControl
+    size="small"
+    sx={{
+      minWidth: 205,
+
       "& .MuiOutlinedInput-root": {
-        bgcolor: selectedStatus !== "All" ? "#eff6ff" : "transparent",
-        fieldset: {
-          borderColor: selectedStatus !== "All" ? "#2563eb" : "rgba(0, 0, 0, 0.23)",
-          borderWidth: selectedStatus !== "All" ? "2px" : "1px",
-        }
-      }
+        bgcolor:
+          selectedStatus !== "All"
+            ? "#eff6ff"
+            : "transparent",
+
+        "& fieldset": {
+          borderColor:
+            selectedStatus !== "All"
+              ? "#2563eb"
+              : "rgba(0, 0, 0, 0.23)",
+
+          borderWidth:
+            selectedStatus !== "All"
+              ? "2px"
+              : "1px",
+        },
+      },
     }}
   >
-    <InputLabel sx={{ fontWeight: selectedStatus !== "All" ? 700 : 400, color: selectedStatus !== "All" ? "#2563eb" : "inherit" }}>
+    <InputLabel
+      sx={{
+        fontWeight:
+          selectedStatus !== "All" ? 700 : 400,
+
+        color:
+          selectedStatus !== "All"
+            ? "#2563eb"
+            : "inherit",
+      }}
+    >
       Status {selectedStatus !== "All" && "●"}
     </InputLabel>
 
     <Select
       value={selectedStatus}
       label="Status"
-      onChange={(e) => setSelectedStatus(e.target.value)}
+      onChange={(e) =>
+        setSelectedStatus(e.target.value)
+      }
     >
-      <MenuItem value="All">All Status</MenuItem>
-      <MenuItem value="Safe">Safe</MenuItem>
-      <MenuItem value="Near Expiry">Near Expiry</MenuItem>
-      <MenuItem value="Expired">Expired</MenuItem>
-      <MenuItem value="Low Stock">Low Stock</MenuItem>
+      <MenuItem value="All">
+        All Status
+      </MenuItem>
+
+      <MenuItem value="Safe">
+        Safe
+      </MenuItem>
+
+      <MenuItem value="Near Expiry">
+        Near Expiry
+      </MenuItem>
+
+      <MenuItem value="Expired">
+        Expired
+      </MenuItem>
+
+      <MenuItem value="Low Stock">
+        Low Stock
+      </MenuItem>
     </Select>
   </FormControl>
 
-  {/* زر إعادة التعيين الدائري العصري */}
-  {(selectedCategory !== "All" || selectedStatus !== "All" || search.trim() !== "") && (
+
+  {/* RESET */}
+  {(selectedCategory !== "All" ||
+    selectedStatus !== "All" ||
+    search.trim() !== "") && (
     <Tooltip title="Reset Filters & Search">
       <IconButton
         onClick={() => {
@@ -1425,12 +1621,14 @@ return (
           width: 40,
           height: 40,
           color: "#374151",
+
           transition: "all 0.2s ease",
+
           "&:hover": {
             bgcolor: "#e5e7eb",
             color: "#2563eb",
             transform: "rotate(180deg)",
-          }
+          },
         }}
       >
         <RestartAltRoundedIcon fontSize="small" />
@@ -1438,17 +1636,24 @@ return (
     </Tooltip>
   )}
 
-  <Box sx={{ ml: "auto" }}>
-    <Button
-      variant="outlined"
-      startIcon={<SettingsIcon />}
-      onClick={() => setOpenSectionsDialog(true)}
-      sx={{ borderRadius: "10px", textTransform: "none" }}
-    >
-      Manage Sections
-    </Button>
-  </Box>
+
+  {/* PUSH MANAGE SECTIONS TO FAR RIGHT */}
+  <Box sx={{ flex: 1 }} />
+
+  <Button
+    variant="outlined"
+    startIcon={<SettingsIcon />}
+    onClick={() => setOpenSectionsDialog(true)}
+    sx={{
+      borderRadius: "10px",
+      textTransform: "none",
+      whiteSpace: "nowrap",
+    }}
+  >
+    Manage Sections
+  </Button>
 </Box>
+
 
       <TableContainer component={Paper}>
         <Table>
