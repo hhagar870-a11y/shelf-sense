@@ -24,12 +24,8 @@ function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
 
-  // نافذة "تواصل مع الدعم" — Dialog داخل نفس الصفحة بدل التنقل لصفحة/رابط
-  // خارجي، عشان ما يفتح أي تبويب/رابط ممكن يطلع منه المستخدم لشريط المهام
-  // أو المتصفح قبل تسجيل الدخول
   const [supportOpen, setSupportOpen] = useState(false);
 
-  // نفس بيانات التواصل الموجودة بصفحة Support.jsx بالضبط
   const handleEmailClick = () => {
     window.location.href = "mailto:hajarralhmaidi@gmail.com";
   };
@@ -116,8 +112,6 @@ function Login() {
         lg: 6
       },
 
-      // هذه أهم نقطة:
-      // نرفع الكتلة كلها ونخليها متماسكة
       transform: "translateY(-25px)"
     }}
   >
@@ -600,8 +594,7 @@ function Login() {
     </Box>
 
     {/* =====================================================
-        CONTACT SUPPORT DIALOG (داخل نفس الصفحة، بدون تنقل أو رابط
-        خارجي — يبقى المستخدم داخل صفحة تسجيل الدخول تمامًا)
+        CONTACT SUPPORT DIALOG (باللغة الإنجليزية وبدون ذكر IT)
     ===================================================== */}
 
     <Dialog
@@ -620,16 +613,14 @@ function Login() {
           fontSize: 18
         }}
       >
-        Contact IT Support
+        Contact Support
       </DialogTitle>
 
       <DialogContent>
         <Typography sx={{ color: "#607D8B", fontSize: 13.5, mb: 2.5 }}>
-          لأي مشكلة بتسجيل الدخول أو الحساب، تواصل مع فريق تقنية
-          المعلومات عبر:
+          For any sign-in issues or account assistance, please contact support via:
         </Typography>
 
-        {/* نفس بيانات وتصميم أزرار التواصل بالضبط زي صفحة Support.jsx */}
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
           <Button
             variant="contained"
