@@ -16,6 +16,9 @@ import { useNavigate } from "react-router-dom";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
+import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+import { db } from "../firebase";
+
 function MawsoolOrders() {
   const navigate = useNavigate();
   const [orderedMeds, setOrderedMeds] = useState([]);
@@ -25,55 +28,66 @@ function MawsoolOrders() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
+  // جلب الأدوية من Firestore بدلاً من LocalStorage
   useEffect(() => {
-    const saved = localStorage.getItem("medicines");
-    if (saved) {
-      const allMeds = JSON.parse(saved);
-      const mawsoolFiltered = allMeds.filter(m => !m.isSection && m.mawsoolOrder);
-      const initialized = mawsoolFiltered.map(m => ({
-        ...m,
-        orderQty: m.orderQty !== undefined ? m.orderQty : "",
-        orderNote: m.orderNote || ""
-      }));
-      setOrderedMeds(initialized);
+    async function fetchMawsoolOrders() {
+      try {
+        const snap = await getDocs(collection(db, "medicines"));
+        const allMeds = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const mawsoolFiltered = allMeds.filter(m => !m.isSection && m.mawsoolOrder);
+        const initialized = mawsoolFiltered.map(m => ({
+          ...m,
+          orderQty: m.orderQty !== undefined ? m.orderQty : "",
+          orderNote: m.orderNote || ""
+        }));
+        setOrderedMeds(initialized);
+      } catch (err) {
+        console.error("Failed to fetch Mawsool orders from Firestore:", err);
+      }
     }
+    fetchMawsoolOrders();
   }, []);
 
-  const updateLocalStorageAndState = (updatedList) => {
+  // تحديث بيانات الدواء مباشرة في Firestore وفي الـ State المحلي
+  const updateFirestoreAndState = async (updatedList, targetId, updatedFields) => {
     setOrderedMeds(updatedList);
-    const saved = localStorage.getItem("medicines");
-    if (saved) {
-      const allMeds = JSON.parse(saved);
-      const updatedAll = allMeds.map(med => {
-        const found = updatedList.find(item => item.id === med.id);
-        if (found) {
-          return { ...med, orderQty: found.orderQty, orderNote: found.orderNote };
-        }
-        return med;
-      });
-      localStorage.setItem("medicines", JSON.stringify(updatedAll));
+    try {
+      const medRef = doc(db, "medicines", targetId);
+      await updateDoc(medRef, updatedFields);
+    } catch (err) {
+      console.error("Failed to update Firestore:", err);
     }
   };
 
   const handleQtyChange = (id, val) => {
     const updated = orderedMeds.map(m => m.id === id ? { ...m, orderQty: val } : m);
-    updateLocalStorageAndState(updated);
+    const found = updated.find(item => item.id === id);
+    if (found) {
+      updateFirestoreAndState(updated, id, { orderQty: found.orderQty, orderNote: found.orderNote });
+    }
   };
 
   const handleNoteChange = (id, val) => {
     const updated = orderedMeds.map(m => m.id === id ? { ...m, orderNote: val } : m);
-    updateLocalStorageAndState(updated);
+    const found = updated.find(item => item.id === id);
+    if (found) {
+      updateFirestoreAndState(updated, id, { orderQty: found.orderQty, orderNote: found.orderNote });
+    }
   };
 
-  const handleRemoveFromMawsool = (id) => {
+  const handleRemoveFromMawsool = async (id) => {
     const updatedOrdered = orderedMeds.filter(m => m.id !== id);
     setOrderedMeds(updatedOrdered);
 
-    const saved = localStorage.getItem("medicines");
-    if (saved) {
-      const allMeds = JSON.parse(saved);
-      const updatedAll = allMeds.map(m => m.id === id ? { ...m, mawsoolOrder: false, orderQty: "", orderNote: "" } : m);
-      localStorage.setItem("medicines", JSON.stringify(updatedAll));
+    try {
+      const medRef = doc(db, "medicines", id);
+      await updateDoc(medRef, {
+        mawsoolOrder: false,
+        orderQty: "",
+        orderNote: ""
+      });
+    } catch (err) {
+      console.error("Failed to remove item from Mawsool in Firestore:", err);
     }
   };
 
@@ -123,7 +137,7 @@ function MawsoolOrders() {
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       
-      {/* تم إضافة الـ Sidebar هنا لتظهر الدائرة والشرطات الثلاث في صفحة موصول */}
+      {/* Sidebar */}
       <Sidebar />
       
       {/* البنر العلوي */}
@@ -303,7 +317,7 @@ function MawsoolOrders() {
         />
       </TableContainer>
 
-      {/* GLOBAL FOOTER (تم وضعه هنا بالداخل قبل إغلاق Container) */}
+      {/* GLOBAL FOOTER */}
       <Box
         component="footer"
         sx={{

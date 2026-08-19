@@ -10,10 +10,16 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Divider,
+  IconButton
 } from "@mui/material";
 import { useState } from "react";
 import { login } from "../../utils/auth";
+import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+import PhoneIcon from "@mui/icons-material/Phone";
+import EmailIcon from "@mui/icons-material/Email";
+import CloseIcon from "@mui/icons-material/Close";
 
 function Login() {
   const navigate = useNavigate();
@@ -23,9 +29,6 @@ function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
 
-  // نافذة "تواصل مع الدعم" — Dialog داخل نفس الصفحة بدل التنقل لصفحة/رابط
-  // خارجي، عشان ما يفتح أي تبويب/رابط ممكن يطلع منه المستخدم لشريط المهام
-  // أو المتصفح قبل تسجيل الدخول
   const [supportOpen, setSupportOpen] = useState(false);
 
   const handleSignIn = (e) => {
@@ -106,8 +109,6 @@ function Login() {
         lg: 6
       },
 
-      // هذه أهم نقطة:
-      // نرفع الكتلة كلها ونخليها متماسكة
       transform: "translateY(-25px)"
     }}
   >
@@ -590,8 +591,7 @@ function Login() {
     </Box>
 
     {/* =====================================================
-        CONTACT SUPPORT DIALOG (داخل نفس الصفحة، بدون تنقل أو رابط
-        خارجي — يبقى المستخدم داخل صفحة تسجيل الدخول تمامًا)
+        PROFESSIONAL CONTACT SUPPORT DIALOG
     ===================================================== */}
 
     <Dialog
@@ -600,44 +600,133 @@ function Login() {
       maxWidth="xs"
       fullWidth
       PaperProps={{
-        sx: { borderRadius: 2 }
+        sx: { 
+          borderRadius: 3,
+          p: 1,
+          boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+        }
       }}
     >
       <DialogTitle
         sx={{
-          color: "#103F5A",
-          fontWeight: 700,
-          fontSize: 18
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          pb: 1
         }}
       >
-        Contact IT Support
-      </DialogTitle>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Box
+            sx={{
+              width: 38,
+              height: 38,
+              borderRadius: "10px",
+              backgroundColor: "#E8F5FA",
+              color: "#1385bf",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+          >
+            <SupportAgentIcon fontSize="small" />
+          </Box>
+          <Typography
+            sx={{
+              color: "#103F5A",
+              fontWeight: 700,
+              fontSize: 17
+            }}
+          >
+            Contact IT Support
+          </Typography>
+        </Box>
 
-      <DialogContent>
-        <Typography sx={{ color: "#607D8B", fontSize: 13.5, mb: 2 }}>
-          لأي مشكلة بتسجيل الدخول أو الحساب، تواصل مع فريق تقنية
-          المعلومات عبر:
-        </Typography>
-
-        <Typography sx={{ color: "#294C60", fontSize: 14, fontWeight: 600, mb: 0.5 }}>
-          📞 Ext. 1234
-        </Typography>
-
-        <Typography sx={{ color: "#294C60", fontSize: 14, fontWeight: 600 }}>
-          ✉️ it-support@hospital.sa
-        </Typography>
-      </DialogContent>
-
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button
+        <IconButton
+          aria-label="close"
           onClick={() => setSupportOpen(false)}
           sx={{
-            textTransform: "none",
-            fontWeight: 600,
-            color: "#1385bf"
+            color: "#9EAFB8",
+            "&:hover": { backgroundColor: "#F1F9FC", color: "#103F5A" }
           }}
         >
-          Close
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent sx={{ pt: 1 }}>
+        <Typography 
+          dir="rtl"
+          sx={{ 
+            color: "#607D8B", 
+            fontSize: 13.5, 
+            mb: 2.5,
+            lineHeight: 1.6
+          }}
+        >
+          لأي مشكلة في تسجيل الدخول أو استعادة الحساب، يرجى التواصل مع فريق تقنية المعلومات عبر القنوات التالية:
+        </Typography>
+
+        <Box 
+          sx={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: 1.5,
+            backgroundColor: "#F8FAFC",
+            p: 2,
+            borderRadius: 2,
+            border: "1px solid #E2E8F0"
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box sx={{ color: "#1385bf", display: "flex" }}>
+              <PhoneIcon fontSize="small" />
+            </Box>
+            <Box>
+              <Typography sx={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
+                Internal Extension
+              </Typography>
+              <Typography sx={{ fontSize: 14, color: "#1E293B", fontWeight: 700 }}>
+                Ext. 1234
+              </Typography>
+            </Box>
+          </Box>
+
+          <Divider sx={{ borderColor: "#E2E8F0" }} />
+
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box sx={{ color: "#1385bf", display: "flex" }}>
+              <EmailIcon fontSize="small" />
+            </Box>
+            <Box>
+              <Typography sx={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
+                Support Email
+              </Typography>
+              <Typography sx={{ fontSize: 14, color: "#1E293B", fontWeight: 700 }}>
+                it-support@hospital.sa
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, pb: 2, pt: 1 }}>
+        <Button
+          fullWidth
+          variant="contained"
+          onClick={() => setSupportOpen(value => !value)} // إغلاق النافذة
+          sx={{
+            textTransform: "none",
+            fontWeight: 700,
+            backgroundColor: "#1385bf",
+            borderRadius: 2,
+            py: 1.2,
+            boxShadow: "0 4px 12px rgba(19, 133, 191, 0.2)",
+            "&:hover": {
+              backgroundColor: "#117EAF"
+            }
+          }}
+        >
+          Got it
         </Button>
       </DialogActions>
     </Dialog>
@@ -685,5 +774,4 @@ const inputStyle = {
     opacity: 1
   }
 };
-
-export default Login;
+export default Logi
