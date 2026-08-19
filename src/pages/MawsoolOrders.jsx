@@ -15,9 +15,10 @@ import LocalPharmacyIcon from "@mui/icons-material/LocalPharmacy";
 import { useNavigate } from "react-router-dom";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+
+const MEDICINES_COLLECTION = "medicines";
 
 function MawsoolOrders() {
   const navigate = useNavigate();
@@ -28,12 +29,13 @@ function MawsoolOrders() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // جلب الأدوية من Firestore بدلاً من LocalStorage
+  // نجيب طلبات موصول من نفس مجموعة "medicines" بفايرستور (مو localStorage
+  // -- صفحة Inventory صارت تكتب على فايرستور بس، فلازم نقرأ من نفس المصدر)
   useEffect(() => {
-    async function fetchMawsoolOrders() {
+    (async () => {
       try {
-        const snap = await getDocs(collection(db, "medicines"));
-        const allMeds = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const snapshot = await getDocs(collection(db, MEDICINES_COLLECTION));
+        const allMeds = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         const mawsoolFiltered = allMeds.filter(m => !m.isSection && m.mawsoolOrder);
         const initialized = mawsoolFiltered.map(m => ({
           ...m,
@@ -42,53 +44,36 @@ function MawsoolOrders() {
         }));
         setOrderedMeds(initialized);
       } catch (err) {
-        console.error("Failed to fetch Mawsool orders from Firestore:", err);
+        console.error("فشل تحميل طلبات موصول من فايرستور:", err);
       }
-    }
-    fetchMawsoolOrders();
+    })();
   }, []);
 
-  // تحديث بيانات الدواء مباشرة في Firestore وفي الـ State المحلي
-  const updateFirestoreAndState = async (updatedList, targetId, updatedFields) => {
-    setOrderedMeds(updatedList);
+  // يحدّث حقل واحد (orderQty أو orderNote أو mawsoolOrder) بمستند الدواء
+  // نفسه بفايرستور، مع تحديث الحالة محليًا فورًا عشان الواجهة تستجيب بسرعة
+  const updateMedicineFields = async (id, fields) => {
+    setOrderedMeds((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ...fields } : m))
+    );
+
     try {
-      const medRef = doc(db, "medicines", targetId);
-      await updateDoc(medRef, updatedFields);
+      await updateDoc(doc(db, MEDICINES_COLLECTION, id), fields);
     } catch (err) {
-      console.error("Failed to update Firestore:", err);
+      console.error("فشل تحديث الدواء بفايرستور:", err);
     }
   };
 
   const handleQtyChange = (id, val) => {
-    const updated = orderedMeds.map(m => m.id === id ? { ...m, orderQty: val } : m);
-    const found = updated.find(item => item.id === id);
-    if (found) {
-      updateFirestoreAndState(updated, id, { orderQty: found.orderQty, orderNote: found.orderNote });
-    }
+    updateMedicineFields(id, { orderQty: val });
   };
 
   const handleNoteChange = (id, val) => {
-    const updated = orderedMeds.map(m => m.id === id ? { ...m, orderNote: val } : m);
-    const found = updated.find(item => item.id === id);
-    if (found) {
-      updateFirestoreAndState(updated, id, { orderQty: found.orderQty, orderNote: found.orderNote });
-    }
+    updateMedicineFields(id, { orderNote: val });
   };
 
-  const handleRemoveFromMawsool = async (id) => {
-    const updatedOrdered = orderedMeds.filter(m => m.id !== id);
-    setOrderedMeds(updatedOrdered);
-
-    try {
-      const medRef = doc(db, "medicines", id);
-      await updateDoc(medRef, {
-        mawsoolOrder: false,
-        orderQty: "",
-        orderNote: ""
-      });
-    } catch (err) {
-      console.error("Failed to remove item from Mawsool in Firestore:", err);
-    }
+  const handleRemoveFromMawsool = (id) => {
+    setOrderedMeds((prev) => prev.filter((m) => m.id !== id));
+    updateMedicineFields(id, { mawsoolOrder: false, orderQty: "", orderNote: "" });
   };
 
   const handleCopyCode = (codeText, id) => {
@@ -137,7 +122,7 @@ function MawsoolOrders() {
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       
-      {/* Sidebar */}
+      {/* تم إضافة الـ Sidebar هنا لتظهر الدائرة والشرطات الثلاث في صفحة موصول */}
       <Sidebar />
       
       {/* البنر العلوي */}
@@ -317,7 +302,7 @@ function MawsoolOrders() {
         />
       </TableContainer>
 
-      {/* GLOBAL FOOTER */}
+      {/* GLOBAL FOOTER (تم وضعه هنا بالداخل قبل إغلاق Container) */}
       <Box
         component="footer"
         sx={{

@@ -10,16 +10,11 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  Divider,
-  IconButton
+  DialogActions
 } from "@mui/material";
+import { Mail, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { login } from "../../utils/auth";
-import SupportAgentIcon from "@mui/icons-material/SupportAgent";
-import PhoneIcon from "@mui/icons-material/Phone";
-import EmailIcon from "@mui/icons-material/Email";
-import CloseIcon from "@mui/icons-material/Close";
 
 function Login() {
   const navigate = useNavigate();
@@ -29,7 +24,19 @@ function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
 
+  // نافذة "تواصل مع الدعم" — Dialog داخل نفس الصفحة بدل التنقل لصفحة/رابط
+  // خارجي، عشان ما يفتح أي تبويب/رابط ممكن يطلع منه المستخدم لشريط المهام
+  // أو المتصفح قبل تسجيل الدخول
   const [supportOpen, setSupportOpen] = useState(false);
+
+  // نفس بيانات التواصل الموجودة بصفحة Support.jsx بالضبط
+  const handleEmailClick = () => {
+    window.location.href = "mailto:hajarralhmaidi@gmail.com";
+  };
+
+  const handleWhatsappClick = () => {
+    window.open("https://wa.me/966553994025", "_blank");
+  };
 
   const handleSignIn = (e) => {
     e.preventDefault();
@@ -109,6 +116,8 @@ function Login() {
         lg: 6
       },
 
+      // هذه أهم نقطة:
+      // نرفع الكتلة كلها ونخليها متماسكة
       transform: "translateY(-25px)"
     }}
   >
@@ -591,7 +600,8 @@ function Login() {
     </Box>
 
     {/* =====================================================
-        PROFESSIONAL CONTACT SUPPORT DIALOG
+        CONTACT SUPPORT DIALOG (داخل نفس الصفحة، بدون تنقل أو رابط
+        خارجي — يبقى المستخدم داخل صفحة تسجيل الدخول تمامًا)
     ===================================================== */}
 
     <Dialog
@@ -600,133 +610,78 @@ function Login() {
       maxWidth="xs"
       fullWidth
       PaperProps={{
-        sx: { 
-          borderRadius: 3,
-          p: 1,
-          boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-        }
+        sx: { borderRadius: 2 }
       }}
     >
       <DialogTitle
         sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          pb: 1
+          color: "#103F5A",
+          fontWeight: 700,
+          fontSize: 18
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-          <Box
-            sx={{
-              width: 38,
-              height: 38,
-              borderRadius: "10px",
-              backgroundColor: "#E8F5FA",
-              color: "#1385bf",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}
-          >
-            <SupportAgentIcon fontSize="small" />
-          </Box>
-          <Typography
-            sx={{
-              color: "#103F5A",
-              fontWeight: 700,
-              fontSize: 17
-            }}
-          >
-            Contact IT Support
-          </Typography>
-        </Box>
-
-        <IconButton
-          aria-label="close"
-          onClick={() => setSupportOpen(false)}
-          sx={{
-            color: "#9EAFB8",
-            "&:hover": { backgroundColor: "#F1F9FC", color: "#103F5A" }
-          }}
-        >
-          <CloseIcon fontSize="small" />
-        </IconButton>
+        Contact IT Support
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 1 }}>
-        <Typography 
-          dir="rtl"
-          sx={{ 
-            color: "#607D8B", 
-            fontSize: 13.5, 
-            mb: 2.5,
-            lineHeight: 1.6
-          }}
-        >
-          لأي مشكلة في تسجيل الدخول أو استعادة الحساب، يرجى التواصل مع فريق تقنية المعلومات عبر القنوات التالية:
+      <DialogContent>
+        <Typography sx={{ color: "#607D8B", fontSize: 13.5, mb: 2.5 }}>
+          لأي مشكلة بتسجيل الدخول أو الحساب، تواصل مع فريق تقنية
+          المعلومات عبر:
         </Typography>
 
-        <Box 
-          sx={{ 
-            display: "flex", 
-            flexDirection: "column", 
-            gap: 1.5,
-            backgroundColor: "#F8FAFC",
-            p: 2,
-            borderRadius: 2,
-            border: "1px solid #E2E8F0"
-          }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-            <Box sx={{ color: "#1385bf", display: "flex" }}>
-              <PhoneIcon fontSize="small" />
-            </Box>
-            <Box>
-              <Typography sx={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
-                Internal Extension
-              </Typography>
-              <Typography sx={{ fontSize: 14, color: "#1E293B", fontWeight: 700 }}>
-                Ext. 1234
-              </Typography>
-            </Box>
-          </Box>
+        {/* نفس بيانات وتصميم أزرار التواصل بالضبط زي صفحة Support.jsx */}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <Button
+            variant="contained"
+            startIcon={<Mail size={18} />}
+            onClick={handleEmailClick}
+            sx={{
+              bgcolor: "#0284c7",
+              color: "#ffffff",
+              textTransform: "none",
+              borderRadius: 2.5,
+              py: 1.2,
+              fontWeight: 600,
+              boxShadow: "none",
+              justifyContent: "flex-start",
+              px: 3,
+              "&:hover": { bgcolor: "#0369a1", boxShadow: "none" }
+            }}
+          >
+            hajarralhmaidi@gmail.com
+          </Button>
 
-          <Divider sx={{ borderColor: "#E2E8F0" }} />
-
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-            <Box sx={{ color: "#1385bf", display: "flex" }}>
-              <EmailIcon fontSize="small" />
-            </Box>
-            <Box>
-              <Typography sx={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
-                Support Email
-              </Typography>
-              <Typography sx={{ fontSize: 14, color: "#1E293B", fontWeight: 700 }}>
-                it-support@hospital.sa
-              </Typography>
-            </Box>
-          </Box>
+          <Button
+            variant="outlined"
+            startIcon={<MessageCircle size={18} color="#16a34a" />}
+            onClick={handleWhatsappClick}
+            sx={{
+              borderColor: "#cbd5e1",
+              color: "#334155",
+              textTransform: "none",
+              borderRadius: 2.5,
+              py: 1.2,
+              fontWeight: 600,
+              justifyContent: "flex-start",
+              px: 3,
+              "&:hover": { borderColor: "#0284c7", bgcolor: "#f8fafc" }
+            }}
+          >
+            Contact via WhatsApp
+          </Button>
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 2, pt: 1 }}>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button
-          fullWidth
-          variant="contained"
-          onClick={() => setSupportOpen(value => !value)} // إغلاق النافذة
+          onClick={() => setSupportOpen(false)}
           sx={{
             textTransform: "none",
-            fontWeight: 700,
-            backgroundColor: "#1385bf",
-            borderRadius: 2,
-            py: 1.2,
-            boxShadow: "0 4px 12px rgba(19, 133, 191, 0.2)",
-            "&:hover": {
-              backgroundColor: "#117EAF"
-            }
+            fontWeight: 600,
+            color: "#1385bf"
           }}
         >
-          Got it
+          Close
         </Button>
       </DialogActions>
     </Dialog>
@@ -774,4 +729,5 @@ const inputStyle = {
     opacity: 1
   }
 };
+
 export default Login;

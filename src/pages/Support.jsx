@@ -149,7 +149,8 @@ export default function Support() {
             {/* Resource Cards Stack */}
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               
-              {/* Resource 1: System Presentation */}
+              {/* Resource 1: System Presentation (لسا ما جهزناه — نعرضه
+                  باهت وغير قابل للنقر، مع "Not available currently") */}
               <Paper 
                 elevation={0} 
                 sx={{ 
@@ -157,12 +158,12 @@ export default function Support() {
                   borderRadius: 3, 
                   bgcolor: "#f8fafc", 
                   border: "1px solid #e2e8f0",
-                  transition: "all 0.2s ease",
-                  "&:hover": { borderColor: "#0284c7", bgcolor: "#f0f9ff" }
+                  opacity: 0.55,
+                  cursor: "not-allowed"
                 }}
               >
                 <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                  <FileText size={18} color="#0284c7" style={{ marginTop: 2 }} />
+                  <FileText size={18} color="#94a3b8" style={{ marginTop: 2 }} />
                   <Box>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#0f172a", mb: 0.5 }}>
                       System Presentation
@@ -170,25 +171,34 @@ export default function Support() {
                     <Typography variant="caption" sx={{ color: "#64748b", display: "block", lineHeight: 1.4 }}>
                       System overview, features, and workflow.
                     </Typography>
+                    <Typography variant="caption" sx={{ color: "#94a3b8", display: "block", mt: 0.5, fontSize: "10.5px" }}>
+                      Not available currently
+                    </Typography>
                   </Box>
                 </Box>
               </Paper>
 
               {/* Resource 2: Medication Classification Reference */}
               <Paper 
+                component="a"
+                href="https://drive.google.com/drive/folders/1Z7U5kG5JimDLspQodswB1ydiVv_cyZQm"
+                target="_blank"
+                rel="noopener noreferrer"
                 elevation={0} 
                 sx={{ 
                   p: 2, 
                   borderRadius: 3, 
                   bgcolor: "#f8fafc", 
                   border: "1px solid #e2e8f0",
+                  display: "block",
+                  textDecoration: "none",
                   transition: "all 0.2s ease",
                   "&:hover": { borderColor: "#0284c7", bgcolor: "#f0f9ff" }
                 }}
               >
                 <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
                   <FileText size={18} color="#0284c7" style={{ marginTop: 2 }} />
-                  <Box>
+                  <Box sx={{ flex: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#0f172a", mb: 0.5 }}>
                       Medication Classification Reference
                     </Typography>
@@ -196,24 +206,31 @@ export default function Support() {
                       Reference used for medication classification within the system.
                     </Typography>
                   </Box>
+                  <ExternalLink size={15} color="#0284c7" style={{ marginTop: 2, flexShrink: 0 }} />
                 </Box>
               </Paper>
 
               {/* Resource 3: Medication Database & Codes */}
               <Paper 
+                component="a"
+                href="https://drive.google.com/drive/folders/1eFYNdBk_O5NuAoRtRN5Sof-VIsuP5lyQ"
+                target="_blank"
+                rel="noopener noreferrer"
                 elevation={0} 
                 sx={{ 
                   p: 2, 
                   borderRadius: 3, 
                   bgcolor: "#f8fafc", 
                   border: "1px solid #e2e8f0",
+                  display: "block",
+                  textDecoration: "none",
                   transition: "all 0.2s ease",
                   "&:hover": { borderColor: "#0284c7", bgcolor: "#f0f9ff" }
                 }}
               >
                 <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
                   <FileText size={18} color="#0284c7" style={{ marginTop: 2 }} />
-                  <Box>
+                  <Box sx={{ flex: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#0f172a", mb: 0.5 }}>
                       Medication Database & Codes
                     </Typography>
@@ -221,6 +238,7 @@ export default function Support() {
                       Medication list and corresponding system codes.
                     </Typography>
                   </Box>
+                  <ExternalLink size={15} color="#0284c7" style={{ marginTop: 2, flexShrink: 0 }} />
                 </Box>
               </Paper>
 
