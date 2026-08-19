@@ -117,6 +117,18 @@ function normalizeDigits(value) {
   });
 }
 
+// كمية الدواء أحيانًا تُخزّن كنص فيه وحدة القياس ملتصقة به (مثل "150 tab" أو
+// "6 injections" — زي ما توصل من ملفات إكسل NUPCO)، فـ Number(...) عليها
+// مباشرة يرجع NaN وأي مقارنة رقمية (Low Stock، الترتيب...) تفشل بصمت. هذي
+// الدالة تسحب أول رقم موجود بالنص وتتجاهل الوحدة، بدل ما تعتمد على القيمة
+// تكون رقم صافي دايمًا
+function parseQuantityNumber(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "number") return value;
+  const match = String(value).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  return match ? parseFloat(match[0]) : 0;
+}
+
 // يقبل أي صيغة تاريخ يكتبها المستخدم بحرية (يوم كامل أو شهر وسنة بس)
 // ويحولها لنفس صيغة "YYYY-MM-DD" اللي نستخدمها بالتطبيق، بنفس منطق
 // استيراد الإكسل بالضبط: لو ماكتب يوم، ياخذ آخر يوم بالشهر تلقائيًا
@@ -1197,7 +1209,7 @@ const filteredMedicines = useMemo(() => {
 
     // Low Stock فلتر منفصل عن حالة الانتهاء: يقارن الكمية الحالية بحد إعادة
     // الطلب (reorderLevel)، نفس المنطق المستخدم بالداش بورد بالضبط
-    const quantityValue = Number(medicine.quantity ?? 0);
+    const quantityValue = parseQuantityNumber(medicine.quantity);
     const reorderLevelValue = Number(medicine.reorderLevel ?? 20);
     const isLowStock =
       quantityValue >= 0 && quantityValue <= reorderLevelValue;

@@ -53,6 +53,18 @@ import { getLowStockThreshold, saveLowStockThreshold } from "../utils/lowStockSe
 // شاشة تحميل فاضية كل مرة ندخل فيها الداش بورد، ونحدّث البيانات بالخلفية
 let dashboardMedicinesCache = null;
 
+// كمية الدواء أحيانًا تُخزّن كنص فيه وحدة القياس ملتصقة به (مثل "150 tab" أو
+// "6 injections" — زي ما توصل من ملفات إكسل NUPCO)، فـ Number(...) عليها
+// مباشرة يرجع NaN وأي مقارنة رقمية (Low Stock، الترتيب...) تفشل بصمت. هذي
+// الدالة تسحب أول رقم موجود بالنص وتتجاهل الوحدة، بدل ما تعتمد على القيمة
+// تكون رقم صافي دايمًا
+const parseQuantityNumber = (value) => {
+  if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "number") return value;
+  const match = String(value).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  return match ? parseFloat(match[0]) : 0;
+};
+
 
 function Dashboard() {
 
@@ -512,7 +524,7 @@ function Dashboard() {
     return realMedicines
       .filter((medicine) => {
 
-        const quantity = Number(
+        const quantity = parseQuantityNumber(
           medicine.quantity ??
           medicine.qty ??
           medicine.stock ??
@@ -534,11 +546,11 @@ function Dashboard() {
       })
       .sort((a, b) => {
 
-        const qtyA = Number(
+        const qtyA = parseQuantityNumber(
           a.quantity ?? a.qty ?? a.stock ?? 0
         );
 
-        const qtyB = Number(
+        const qtyB = parseQuantityNumber(
           b.quantity ?? b.qty ?? b.stock ?? 0
         );
 
@@ -2326,7 +2338,7 @@ function Dashboard() {
                     (medicine, index) => {
 
                       const quantity =
-                        Number(
+                        parseQuantityNumber(
                           medicine.quantity ??
                           medicine.qty ??
                           medicine.stock ??
