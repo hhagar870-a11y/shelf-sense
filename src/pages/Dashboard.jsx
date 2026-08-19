@@ -464,7 +464,11 @@ function Dashboard() {
   // EXPIRING WITHIN 30 DAYS
   // =========================================================
 
-  const expiringWithin30Days = useMemo(() => {
+  // القائمة الكاملة (بدون قص) — تُستخدم لعرض العدد الصحيح بجانب عنوان
+  // الكرت. قبل كذا كان العدد المعروض يطلع من نفس القائمة المقصوصة على 4
+  // عناصر بس، فكان يوقف عند 4 حتى لو الأدوية الفعلية اللي بتنتهي خلال
+  // 30 يوم أكثر من كذا (نفس مشكلة عدم التطابق بين الداشبورد والانفنتوري)
+  const expiringWithin30DaysFull = useMemo(() => {
 
     const today = new Date();
 
@@ -489,10 +493,14 @@ function Dashboard() {
         (a, b) =>
           new Date(a.expiry) -
           new Date(b.expiry)
-      )
-      .slice(0, 4);
+      );
 
   }, [realMedicines]);
+
+  const expiringWithin30Days = useMemo(
+    () => expiringWithin30DaysFull.slice(0, 4),
+    [expiringWithin30DaysFull]
+  );
 
 
   // =========================================================
@@ -511,12 +519,12 @@ function Dashboard() {
           0
         );
 
-        const reorderLevel = Number(
-          medicine.reorderLevel ??
-          medicine.minimumStock ??
-          medicine.minStock ??
-          lowStockThreshold
-        );
+        // نستخدم دايمًا القيمة اللي محددها المستخدم بصندوق "Consider low
+        // stock at or below" — هذا هو المعنى الحرفي للنص، وهذا اللي يتوقعه
+        // المستخدم لما يغيّر الرقم. قبل كذا كنا نعطي الأولوية لـ reorderLevel
+        // الخاص بكل دواء (اللي القيمة الافتراضية له 20 لأي دواء يضاف من نموذج
+        // الإضافة)، فكان يتجاهل عمليًا أي رقم يحطه المستخدم هنا لمعظم الأدوية
+        const reorderLevel = Number(lowStockThreshold);
 
         return (
           quantity <= reorderLevel &&
@@ -1650,7 +1658,7 @@ function Dashboard() {
                       "#98A2B3",
                   }}
                 >
-                  {expiringWithin30Days.length}
+                  {expiringWithin30DaysFull.length}
                 </Typography>
 
               </Box>
@@ -2326,12 +2334,7 @@ function Dashboard() {
                         );
 
                       const reorderLevel =
-                        Number(
-                          medicine.reorderLevel ??
-                          medicine.minimumStock ??
-                          medicine.minStock ??
-                          lowStockThreshold
-                        );
+                        Number(lowStockThreshold);
 
 
                       return (

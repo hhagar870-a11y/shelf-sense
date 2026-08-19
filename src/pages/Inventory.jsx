@@ -572,6 +572,7 @@ const handleLabelSave = () => {
         categories: getDrugCategories(newMedicine.name, newMedicine.code),
         labels: [],
         otherNames: [newMedicine.name],
+        dateAdded: new Date().toISOString(),
       },
     ];
     setMedicines(updatedMedicines);
@@ -866,6 +867,7 @@ const processExcelImport = (rows, baseMedicines) => {
         labels: incomingLabels,
         mawsoolOrder: false,
         otherNames: incomingName !== officialName ? [officialName, incomingName] : [incomingName],
+        dateAdded: new Date().toISOString(),
       };
       
       currentMedicines.push(newMed);
@@ -1135,16 +1137,31 @@ const getCountdownText = (expiry) => {
   return `${diffDays} ${diffDays === 1 ? "day" : "days"} left`;
 };
 
+// رقم سطر ثابت لكل دواء (يتجاهل الأقسام) حسب ترتيبه الفعلي بقائمة المخزون
+// الكاملة — نفس الرقم اللي يظهر بعمود "NO." بالجدول. نحسبه هنا بمرحلة
+// وحدة عشان نفس الرقم يُستخدم بالبحث وبالعرض معًا، فلما تكتب رقم بصندوق
+// البحث يطابق فعلاً نفس الرقم اللي شايفه قدام الدواء بالجدول
+const medicineLineNumbers = useMemo(() => {
+  const map = new Map();
+  let counter = 0;
+  medicines.forEach((m) => {
+    if (m.isSection) return;
+    counter++;
+    map.set(m.id, counter);
+  });
+  return map;
+}, [medicines]);
+
 // تصفية الأدوية والأقسام للبحث (بالاسم الرسمي، الأسماء البديلة داخل قائمة المعلومات، الكود، أو رقم السطر NO.)
 // ملفوفة بـ useMemo عشان ما تتكرر الحسابات الثقيلة (خصوصًا جلب التصنيفات)
 // إلا لما تتغير القائمة أو مصطلح البحث أو الفلاتر فعليًا، مو مع كل ضغطة زر
 // بالواجهة (زي فتح نافذة التصدير) اللي كانت تسبب تأخير ملحوظ بمخزون كبير
 const filteredMedicines = useMemo(() => {
-  return medicines.filter((medicine, originalIdx) => {
+  return medicines.filter((medicine) => {
     if (medicine.isSection) return true;
 
     const searchTerm = search ? search.trim().toLowerCase() : "";
-    const drugLineNumber = String(originalIdx + 1);
+    const drugLineNumber = String(medicineLineNumbers.get(medicine.id) ?? "");
 
     // التحقق هل مصطلح البحث مطابـق لاسم الدواء الأساسي، أو الكود، أو رقم السطر
     const matchMain =
@@ -1193,7 +1210,7 @@ const filteredMedicines = useMemo(() => {
 
     return matchSearch && matchCategory && matchStatus;
   });
-}, [medicines, search, selectedCategory, selectedStatus]);
+}, [medicines, medicineLineNumbers, search, selectedCategory, selectedStatus]);
 return (
 <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
 
@@ -1695,7 +1712,6 @@ return (
   </TableRow>
 ) : (
 (() => {
-  let drugCounter = 0;
 
   return filteredMedicines
     .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
@@ -1723,7 +1739,10 @@ return (
         );
       }
 
-      drugCounter++;
+      // نفس الرقم الثابت اللي يعتمد عليه البحث برقم السطر (مو عداد يعيد
+      // البداية من 1 مع كل صفحة أو فلتر — عشان الرقم اللي تبحث فيه يطابق
+      // فعلاً الرقم اللي شايفه بعمود NO.)
+      const drugCounter = medicineLineNumbers.get(medicine.id) ?? (actualIndex + 1);
 
       return (
               <TableRow key={actualIndex}>
@@ -2485,7 +2504,8 @@ color:
               expiryDates: (dup.expiryDates && dup.expiryDates.length) ? dup.expiryDates : [""],
               categories: getDrugCategories(dup.name, dup.code),
               labels: [],
-              otherNames: [dup.name]
+              otherNames: [dup.name],
+              dateAdded: new Date().toISOString(),
             });
           }
         });
