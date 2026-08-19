@@ -352,6 +352,12 @@ const [medicinesLoading, setMedicinesLoading] = useState(true);
 // نتتبع بيها كل الـ id الموجودة حاليًا بفايرستور، عشان نعرف وقت الحفظ
 // أي مستند لازم نحذفه (صار محذوف أو مدموج) وأينا نضيف/نحدّث بس
 const knownMedicineIdsRef = useRef(new Set());
+// لو true، معناه آخر setMedicines() كان تحميل بيانات (من الكاش أو من فايرستور
+// مباشرة) مو تعديل حقيقي من المستخدم — فما نبيه نعيد كتابته فوق فايرستور
+// (كان سبب مشكلة رجوع البيانات القديمة: صفحة ثانية زي موصول تعدّل مستند
+// معيّن مباشرة بفايرستور، ثم لما نرجع لصفحة الانفنتوري كانت تحمّل الكاش
+// القديم وتعيد حفظه بالكامل فوق التعديل الجديد قبل ما يوصل التحميل الطازج)
+const skipNextPersistRef = useRef(false);
 
 // دالة الحفظ الموحّدة: تستبدل كل استدعاء localStorage.setItem("medicines", ...)
 // بمزامنة فعلية مع Firestore (إضافة/تحديث/حذف حسب الفرق)، بدون ما نغيّر أي
@@ -370,6 +376,7 @@ useEffect(() => {
   // بدون شاشة تحميل، ونحدّثها بهدوء بالخلفية بدل ما نوقف الواجهة على الفارغ
   if (medicinesCache !== null) {
     knownMedicineIdsRef.current = new Set(medicinesCache.map((m) => m.id));
+    skipNextPersistRef.current = true; // تحميل من الكاش، مو تعديل — لا نحفظه
     setMedicines(medicinesCache);
     setSections(sectionsCache || []);
     setMedicinesLoading(false);
@@ -383,6 +390,7 @@ useEffect(() => {
       ]);
 
       knownMedicineIdsRef.current = new Set(loadedMedicines.map((m) => m.id));
+      skipNextPersistRef.current = true; // تحميل طازج من فايرستور، مو تعديل — لا نحفظه
       setMedicines(loadedMedicines);
       setSections(loadedSections);
 
@@ -1050,6 +1058,13 @@ useEffect(() => {
 
 useEffect(() => {
   if (medicinesLoading) return; // ما نكتب فوق البيانات وقت التحميل الأولي لسا
+  if (skipNextPersistRef.current) {
+    // آخر تحديث كان تحميل بيانات (كاش أو فايرستور)، مو تعديل من المستخدم —
+    // نتجاهله مرة وحدة عشان ما نكتب بيانات قديمة/مكررة فوق أي تعديل صار
+    // بصفحة ثانية (مثل صفحة موصول) مباشرة على فايرستور
+    skipNextPersistRef.current = false;
+    return;
+  }
   persistMedicines(medicines);
 }, [medicines]);
 
@@ -2042,7 +2057,7 @@ color:
             label="Reorder Level"
             fullWidth
             margin="normal"
-            helperText="يظهر الدواء ضمن Low Stock إذا وصلت الكمية لهذا الرقم أو أقل"
+            helperText="Optional — medicine shows under Low Stock once quantity reaches this number or below (defaults to 20)"
             value={newMedicine.reorderLevel ?? "20"}
             onChange={(e) =>
               setNewMedicine({
