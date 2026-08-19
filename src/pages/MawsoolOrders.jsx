@@ -129,7 +129,7 @@ function MawsoolOrders() {
       >
         <Box 
           component="img" 
-          src="/mawsool-banner.jpg"
+          src="/mawsool-banner.jpg" 
           alt="Mawsool Banner" 
           sx={{ width: "100%", height: { xs: "220px", sm: "320px", md: "420px" }, objectFit: "contain", display: "block", mx: "auto" }} 
         />
@@ -290,7 +290,7 @@ function MawsoolOrders() {
           rowsPerPageOptions={[10, 25, 50]}
           slotProps={{
             select: {
-              native: type,
+              native: true,
             },
           }}
           sx={{ borderTop: "1px solid #e5e7eb", bgcolor: "#f8fafc" }}
