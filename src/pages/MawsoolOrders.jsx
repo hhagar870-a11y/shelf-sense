@@ -29,8 +29,6 @@ function MawsoolOrders() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // نجيب طلبات موصول من نفس مجموعة "medicines" بفايرستور (مو localStorage
-  // -- صفحة Inventory صارت تكتب على فايرستور بس، فلازم نقرأ من نفس المصدر)
   useEffect(() => {
     (async () => {
       try {
@@ -49,8 +47,6 @@ function MawsoolOrders() {
     })();
   }, []);
 
-  // يحدّث حقل واحد (orderQty أو orderNote أو mawsoolOrder) بمستند الدواء
-  // نفسه بفايرستور، مع تحديث الحالة محليًا فورًا عشان الواجهة تستجيب بسرعة
   const updateMedicineFields = async (id, fields) => {
     setOrderedMeds((prev) =>
       prev.map((m) => (m.id === id ? { ...m, ...fields } : m))
@@ -122,7 +118,6 @@ function MawsoolOrders() {
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       
-      {/* تم إضافة الـ Sidebar هنا لتظهر الدائرة والشرطات الثلاث في صفحة موصول */}
       <Sidebar />
       
       {/* البنر العلوي */}
@@ -133,11 +128,11 @@ function MawsoolOrders() {
         }}
       >
         <Box 
-  component="img" 
-  src={mawsoolBanner} 
-src="/mawsool-banner.jpg"
-  sx={{ width: "100%", height: { xs: "220px", sm: "320px", md: "420px" }, objectFit: "contain", display: "block", mx: "auto" }} 
-/>
+          component="img" 
+          src="/mawsool-banner.jpg"
+          alt="Mawsool Banner" 
+          sx={{ width: "100%", height: { xs: "220px", sm: "320px", md: "420px" }, objectFit: "contain", display: "block", mx: "auto" }} 
+        />
         
         <Box sx={{ position: "absolute", top: 20, left: 20, display: "flex", alignItems: "center", gap: 2 }}>
           <IconButton 
@@ -295,14 +290,14 @@ src="/mawsool-banner.jpg"
           rowsPerPageOptions={[10, 25, 50]}
           slotProps={{
             select: {
-              native: true,
+              native: type,
             },
           }}
           sx={{ borderTop: "1px solid #e5e7eb", bgcolor: "#f8fafc" }}
         />
       </TableContainer>
 
-      {/* GLOBAL FOOTER (تم وضعه هنا بالداخل قبل إغلاق Container) */}
+      {/* GLOBAL FOOTER */}
       <Box
         component="footer"
         sx={{
