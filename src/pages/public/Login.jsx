@@ -774,4 +774,4 @@ const inputStyle = {
     opacity: 1
   }
 };
-export default Logi
+export default Login;
