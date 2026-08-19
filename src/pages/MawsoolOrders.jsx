@@ -17,6 +17,7 @@ import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { db } from "../firebase";
 import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+import mawsoolBanner from "../assets/mawsool-banner.jpg";
 
 const MEDICINES_COLLECTION = "medicines";
 
@@ -133,11 +134,11 @@ function MawsoolOrders() {
         }}
       >
         <Box 
-          component="img" 
-src="/mawsool-banner.jpg"
-          alt="Mawsool Banner" 
-          sx={{ width: "100%", height: { xs: "220px", sm: "320px", md: "420px" }, objectFit: "contain", display: "block", mx: "auto" }} 
-        />
+  component="img" 
+  src={mawsoolBanner} 
+  alt="Mawsool Banner" 
+  sx={{ width: "100%", height: { xs: "220px", sm: "320px", md: "420px" }, objectFit: "contain", display: "block", mx: "auto" }} 
+/>
         
         <Box sx={{ position: "absolute", top: 20, left: 20, display: "flex", alignItems: "center", gap: 2 }}>
           <IconButton 
