@@ -256,7 +256,7 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import VisibilityIcon from "@mui/icons-material/Visibility";
-import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
+import HearingIcon from "@mui/icons-material/Hearing";
 import RestoreFromTrashIcon from "@mui/icons-material/RestoreFromTrash";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
@@ -556,6 +556,8 @@ const handleCodeChange = (e) => {
     setCodeNotRecognized(false);
   } else {
     // الكود مو موجود بقاعدة بيانات الوزارة — إما خطأ كتابة أو صنف جديد لسا ما انضاف
+    // نفضّي حقل الاسم عشان ما يفضل اسم قديم من كود سابق كان متطابق
+    setNewMedicine((prev) => ({ ...prev, code: enteredCode, name: "" }));
     setCodeNotRecognized(true);
   }
 };
@@ -2079,10 +2081,10 @@ return (
         color: badgeColor,
       }}
     >
-      {category === "High Alert" && <WarningAmberIcon sx={{ fontSize: 14 }} />}
-      {category === "Sound Alike" && <RecordVoiceOverIcon sx={{ fontSize: 14 }} />}
-      {category === "Look Alike" && <VisibilityIcon sx={{ fontSize: 14 }} />}
       {category}
+      {category === "High Alert" && <WarningAmberIcon sx={{ fontSize: 14 }} />}
+      {category === "Sound Alike" && <HearingIcon sx={{ fontSize: 14 }} />}
+      {category === "Look Alike" && <VisibilityIcon sx={{ fontSize: 14 }} />}
     </Box>
   );
 })}
@@ -2310,22 +2312,54 @@ return (
 
           {codeNotRecognized && (
             <Box
-              onClick={() => navigate("/support")}
               sx={{
                 display: "flex",
                 alignItems: "center",
                 gap: 0.6,
                 mt: -1.2,
                 mb: 1,
-                cursor: "pointer",
-                width: "fit-content",
-                "&:hover": { textDecoration: "underline" },
+                flexWrap: "wrap",
               }}
             >
               <WarningAmberIcon sx={{ fontSize: 15, color: "#d97706" }} />
               <Typography sx={{ fontSize: 11.5, color: "#b45309" }}>
-                This code isn't recognized — could be a typo, or a new ministry
-                classification not added yet. Contact support?
+                NUPCO code not found in our database.
+              </Typography>
+
+              <Tooltip
+                arrow
+                placement="top"
+                title={
+                  <Box sx={{ p: 0.5 }}>
+                    <Typography sx={{ fontSize: 11.5, fontWeight: 700, mb: 0.5 }}>
+                      Before adding it manually:
+                    </Typography>
+                    <Typography sx={{ fontSize: 11, lineHeight: 1.6 }}>
+                      1. Make sure it's a NUPCO code, not a MOH code<br />
+                      2. Double-check you typed it correctly<br />
+                      3. If it's correct, adding it now will auto-match future
+                      items — or send it to support to add it and stay in sync
+                      with ministry updates
+                    </Typography>
+                  </Box>
+                }
+              >
+                <InfoOutlinedIcon
+                  sx={{ fontSize: 15, color: "#b45309", cursor: "help" }}
+                />
+              </Tooltip>
+
+              <Typography
+                onClick={() => navigate("/support")}
+                sx={{
+                  fontSize: 11.5,
+                  color: "#b45309",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  "&:hover": { textDecoration: "underline" },
+                }}
+              >
+                Contact support
               </Typography>
             </Box>
           )}
