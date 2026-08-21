@@ -511,6 +511,7 @@ const [editIndex, setEditIndex] = useState(null);
 const [search, setSearch] = useState("");
 // true لو المستخدم كتب كود نيبكو وما انطابق مع أي اسم بقاعدة بيانات الوزارة
 const [codeNotRecognized, setCodeNotRecognized] = useState(false);
+const [codeTooLong, setCodeTooLong] = useState(false);
 
 // سلة المهملات
 const [trashItems, setTrashItems] = useState([]);
@@ -519,14 +520,24 @@ const [pendingDelete, setPendingDelete] = useState(null);
 const [undoSnackOpen, setUndoSnackOpen] = useState(false);
 
 // دالة جلب الاسم تلقائياً وسريعة جداً عند كتابة الكود يدوياً
+const NUPCO_CODE_LENGTH = 13;
+
 const handleCodeChange = (e) => {
   const enteredCode = e.target.value.trim();
   setNewMedicine((prev) => ({ ...prev, code: enteredCode }));
 
   if (!enteredCode) {
     setCodeNotRecognized(false);
+    setCodeTooLong(false);
     return;
   }
+
+  if (enteredCode.length > NUPCO_CODE_LENGTH) {
+    setCodeTooLong(true);
+    setCodeNotRecognized(false);
+    return;
+  }
+  setCodeTooLong(false);
 
   // البحث المباشر في قاعدة بيانات الوزارة (ministryDatabase)
   let foundName = "";
@@ -2309,6 +2320,24 @@ return (
               })
             }
           />
+
+          {codeTooLong && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.6,
+                mt: -1.2,
+                mb: 1,
+                flexWrap: "wrap",
+              }}
+            >
+              <WarningAmberIcon sx={{ fontSize: 15, color: "#d97706" }} />
+              <Typography sx={{ fontSize: 11.5, color: "#b45309" }}>
+                This exceeds the usual NUPCO code digit count ({NUPCO_CODE_LENGTH} digits).
+              </Typography>
+            </Box>
+          )}
 
           {codeNotRecognized && (
             <Box
