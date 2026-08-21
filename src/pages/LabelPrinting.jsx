@@ -99,6 +99,18 @@ const CATEGORY_STYLE = {
   "Look Alike": { bg: "#FFD54F", text: "#000", emoji: "👁️ " },
 };
 
+// The four fixed pharmacy-approved label looks, matching the physical
+// shelf labels: solid purple for Hazardous, solid red for High Alert,
+// yellow (with a small ear/eye badge) for Sound/Look-Alike, plain white
+// for medicines with no category.
+const CATEGORY_LABEL_STYLES = {
+  Hazardous: { bg: "#8B5CF6", text: "#fff", accent: "#fff", chip: null },
+  "High Alert": { bg: "#E53935", text: "#fff", accent: "#fff", chip: null },
+  "Sound Alike": { bg: "#FFD54F", text: "#000", accent: "#000", chip: { icon: "👂", label: "Sound Alike" } },
+  "Look Alike": { bg: "#FFD54F", text: "#000", accent: "#000", chip: { icon: "👁️", label: "Look Alike" } },
+  Normal: { bg: "#FFFFFF", text: "#111827", accent: "#1D4ED8", chip: null },
+};
+
 const SIZE_PRESETS = {
   small: { width: 50, height: 30 },
   medium: { width: 70, height: 45 },
@@ -228,6 +240,22 @@ export default function LabelPrinting() {
   const [logoSize, setLogoSize] = useState(28);
   const [qrCustomUrl, setQrCustomUrl] = useState("");
   const [qrSize, setQrSize] = useState(40);
+  const [categoryChip, setCategoryChip] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [batch, setBatch] = useState([]);
+  const [qrMessageHtml, setQrMessageHtml] = useState("");
+  const [qrMessageId] = useState(() => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  const [qrMessageSaved, setQrMessageSaved] = useState(false);
+
+  async function saveQrMessage() {
+    if (!qrMessageHtml.trim()) return;
+    try {
+      await setDoc(doc(db, "qrMessages", qrMessageId), { html: qrMessageHtml, updatedAt: Date.now() });
+      setQrMessageSaved(true);
+    } catch (err) {
+      console.error("Failed to save QR message:", err);
+    }
+  }
 
   useEffect(() => {
     async function fetchMedicines() {
@@ -301,17 +329,19 @@ export default function LabelPrinting() {
         const categories = [...new Set(med.categories || getDrugCategories(med.name, med.code))];
         return { med, dates, statuses, worst, categories };
       })
-      .filter(({ med, worst }) => {
+      .filter(({ med, worst, categories }) => {
         const term = search.trim().toLowerCase();
         const matchSearch = !term
           || med.name?.toLowerCase().includes(term)
           || String(med.code || "").toLowerCase().includes(term)
           || (med.otherNames || []).some((n) => n?.toLowerCase().includes(term));
         const matchStatus = statusFilter === "All" || worst === statusFilter;
-        return matchSearch && matchStatus;
+        const matchCategory = categoryFilter === "All"
+          || (categoryFilter === "None" ? categories.length === 0 : categories.includes(categoryFilter));
+        return matchSearch && matchStatus && matchCategory;
       })
       .sort((a, b) => (priority[a.worst] ?? 9) - (priority[b.worst] ?? 9));
-  }, [medicines, search, statusFilter]);
+  }, [medicines, search, statusFilter, categoryFilter]);
 
   const pagedRows = rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -323,6 +353,7 @@ export default function LabelPrinting() {
     setAppearance((a) => ({ ...a, bg: tpl.bg, text: tpl.text, accent: tpl.accent }));
     setSizePreset("custom");
     setCustomSize(tpl.dims);
+    setCategoryChip(null);
   }
 
   function goTemplate(dir) {
@@ -342,11 +373,64 @@ export default function LabelPrinting() {
     setSizePreset("custom");
     setCustomSize(tpl.dims);
     setOrientation("horizontal");
+    setCategoryChip(null);
     document.getElementById("label-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function toggleField(key) {
-    setFields((f) => ({ ...f, [key]: !f[key] }));
+    setFields((f) => {
+      const next = { ...f, [key]: !f[key] };
+      // Action and Custom Message occupy the same slot on the label —
+      // turning one on should turn the other off instead of silently
+      // losing to whichever has leftover text.
+      if (key === "message" && next.message) next.action = false;
+      if (key === "action" && next.action) next.message = false;
+      return next;
+    });
+  }
+
+  // Apply one of the four fixed category looks (purple/red/yellow/white),
+  // used both for the "Suggested Labels" row and the batch select-all.
+  function applyCategoryStyle(cat) {
+    const style = CATEGORY_LABEL_STYLES[cat] || CATEGORY_LABEL_STYLES.Normal;
+    setFields((f) => ({ ...f, name: true, logo: true }));
+    setAppearance((a) => ({ ...a, bg: style.bg, text: style.text, accent: style.accent }));
+    setCategoryChip(style.chip);
+  }
+
+  function addToBatch() {
+    setBatch((b) => [...b, {
+      id: `b${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      labelText: { ...labelText },
+      fields: { ...fields },
+      appearance: { ...appearance },
+      dims: { ...dims },
+      orientation,
+      categoryChip,
+      previewName: labelText.name || template.title,
+    }]);
+  }
+
+  function removeFromBatch(id) {
+    setBatch((b) => b.filter((item) => item.id !== id));
+  }
+
+  function addAllFilteredToBatch() {
+    const items = rows.map(({ med, categories }) => {
+      const cat = categories[0] || "Normal";
+      const style = CATEGORY_LABEL_STYLES[cat] || CATEGORY_LABEL_STYLES.Normal;
+      return {
+        id: `b${Date.now()}_${med.id}`,
+        labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
+        fields: { name: true, expiry: false, code: false, description: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
+        appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
+        dims: { ...dims },
+        orientation,
+        categoryChip: style.chip,
+        previewName: med.name,
+      };
+    });
+    setBatch((b) => [...b, ...items]);
   }
 
   useEffect(() => {
@@ -387,9 +471,8 @@ export default function LabelPrinting() {
           body * { visibility: hidden; }
           #print-sheet, #print-sheet * { visibility: visible; }
           #print-sheet {
-            display: grid !important;
-            grid-template-columns: repeat(auto-fill, ${dims.width}mm);
-            grid-auto-rows: ${dims.height}mm;
+            display: flex !important;
+            flex-wrap: wrap;
             gap: 4mm;
             position: absolute; top: ${arrangement.y}mm; left: ${arrangement.x}mm;
             width: calc(${PAGE_W}mm - ${arrangement.x}mm - 5mm);
@@ -443,7 +526,12 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               >
                 <Tab value="content" label="Content" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700 }} />
                 {fields.logo && (
-                  <Tab value="branding" label="Branding" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700, color: "#1D4ED8" }} />
+                  <Tab value="branding" label="✎ Branding" sx={{
+                    textTransform: "none", minHeight: 40, fontWeight: 700,
+                    color: activeTab === "branding" ? "#fff" : "#1D4ED8",
+                    bgcolor: activeTab === "branding" ? "#1D4ED8" : "#EAF2FF",
+                    borderRadius: "8px 8px 0 0", mx: 0.5,
+                  }} />
                 )}
                 <Tab value="appearance" label="Appearance" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700 }} />
                 <Tab value="layout" label="Layout & Size" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700 }} />
@@ -461,6 +549,11 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                         />
                       ))}
                     </Box>
+                    {fields.logo && (
+                      <Typography variant="caption" sx={{ color: "#1D4ED8", display: "block", mt: -0.5, mb: 1, ml: 4, fontWeight: 600 }}>
+                        → Edit position & size in the ✎ Branding tab above
+                      </Typography>
+                    )}
                     {fields.name && (
                       <TextField fullWidth size="small" label="Medication Name" sx={{ mt: 1 }}
                         helperText="Edit freely — e.g. trim off the strength/dosage if you don't want it shown."
@@ -479,8 +572,35 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                       <>
                         <TextField fullWidth size="small" label="Custom link for QR (optional)" sx={{ mt: 1.5 }}
                           placeholder="Leave blank to link to this medicine automatically"
-                          helperText="Paste any URL and the QR code will open that instead."
+                          helperText="Paste any URL and the QR code will open that instead — overrides the message below."
                           value={qrCustomUrl} onChange={(e) => setQrCustomUrl(e.target.value)} />
+
+                        {!qrCustomUrl.trim() && (
+                          <Box sx={{ mt: 1.5 }}>
+                            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 0.5 }}>
+                              Custom message shown when the QR is scanned (optional, alongside the medicine info)
+                            </Typography>
+                            <Box sx={{ display: "flex", gap: 0.5, mb: 0.5 }}>
+                              <Button size="small" onClick={() => document.execCommand("bold")} sx={{ minWidth: 32, fontWeight: 800 }}>B</Button>
+                              {["#000000", "#D32F2F", "#1D4ED8", "#2E7D32"].map((c) => (
+                                <Box key={c} onClick={() => document.execCommand("foreColor", false, c)}
+                                  sx={{ width: 22, height: 22, borderRadius: "50%", bgcolor: c, cursor: "pointer", border: "1px solid #e5e7eb" }} />
+                              ))}
+                            </Box>
+                            <Box
+                              contentEditable
+                              suppressContentEditableWarning
+                              onInput={(e) => setQrMessageHtml(e.currentTarget.innerHTML)}
+                              onBlur={saveQrMessage}
+                              sx={{
+                                minHeight: 70, border: "1px solid #e5e7eb", borderRadius: 1.5, p: 1.5, fontSize: 14,
+                                "&:empty:before": { content: '"Type a message pharmacists will see when they scan this label\'s QR..."', color: "#9ca3af" },
+                              }}
+                            />
+                            {qrMessageSaved && <Typography variant="caption" sx={{ color: "#2E7D32" }}>Saved ✓</Typography>}
+                          </Box>
+                        )}
+
                         <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mt: 1.5 }}>QR code size</Typography>
                         <Slider size="small" min={20} max={70} value={qrSize}
                           onChange={(e, v) => setQrSize(v)} />
@@ -576,17 +696,21 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrCustomUrl} qrSize={qrSize} />
+                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrCustomUrl} qrSize={qrSize} categoryChip={categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
               <Typography variant="caption" sx={{ color: "#9ca3af" }}>
                 {template.name} · {dims.width}×{dims.height}mm
               </Typography>
-              <Box sx={{ display: "flex", gap: 1.5 }}>
+              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", justifyContent: "center" }}>
                 <Button variant="outlined" startIcon={<OpenWithIcon />} onClick={() => setArrangeOpen(true)}
                   sx={{ textTransform: "none", fontWeight: 600, borderRadius: "8px" }}>
                   Arrange on A4
+                </Button>
+                <Button variant="outlined" onClick={addToBatch}
+                  sx={{ textTransform: "none", fontWeight: 600, borderRadius: "8px", borderColor: BLUE, color: BLUE }}>
+                  + Add to Batch
                 </Button>
                 <Button variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}
                   sx={{ textTransform: "none", fontWeight: 600, borderRadius: "8px", px: 3, bgcolor: BLUE, "&:hover": { bgcolor: "#1E3A8A" } }}>
@@ -595,6 +719,38 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               </Box>
             </Box>
           </Box>
+
+          {/* ---------- Suggested Labels (based on this medicine's categories) ---------- */}
+          {selectedMed && (
+            <>
+              <Divider sx={{ my: 4 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>Suggested Labels for {selectedMed.name}</Typography>
+              <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 2 }}>
+                Based on this medicine's category — click one to apply it, pre-filled and ready.
+              </Typography>
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                {(() => {
+                  const cats = [...new Set(selectedMed.categories || getDrugCategories(selectedMed.name, selectedMed.code))];
+                  const list = cats.length ? cats : ["Normal"];
+                  return list.map((cat) => {
+                    const style = CATEGORY_LABEL_STYLES[cat] || CATEGORY_LABEL_STYLES.Normal;
+                    return (
+                      <Paper key={cat} onClick={() => applyCategoryStyle(cat)} elevation={0}
+                        sx={{ p: 1.5, borderRadius: 3, cursor: "pointer", textAlign: "center", border: "1px solid #e5e7eb", "&:hover": { borderColor: BLUE } }}>
+                        <Box sx={{
+                          width: 120, height: 70, borderRadius: 1.5, bgcolor: style.bg, color: style.text,
+                          display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, border: "1px solid #e5e7eb",
+                        }}>
+                          {selectedMed.name}
+                        </Box>
+                        <Typography variant="caption" sx={{ display: "block", mt: 1, fontWeight: 600 }}>{cat}</Typography>
+                      </Paper>
+                    );
+                  });
+                })()}
+              </Box>
+            </>
+          )}
 
           {/* ---------- Label Examples gallery ---------- */}
           <Divider sx={{ my: 4 }} />
@@ -637,6 +793,21 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <MenuItem value="Expired">Expired</MenuItem>
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 180, bgcolor: "#fff" }}>
+            <InputLabel>Category</InputLabel>
+            <Select value={categoryFilter} label="Category" onChange={(e) => { setCategoryFilter(e.target.value); setPage(0); }}>
+              <MenuItem value="All">All</MenuItem>
+              <MenuItem value="High Alert">High Alert</MenuItem>
+              <MenuItem value="Hazardous">Hazardous</MenuItem>
+              <MenuItem value="Sound Alike">Sound Alike</MenuItem>
+              <MenuItem value="Look Alike">Look Alike</MenuItem>
+              <MenuItem value="None">No category</MenuItem>
+            </Select>
+          </FormControl>
+          <Button variant="outlined" onClick={addAllFilteredToBatch} disabled={rows.length === 0}
+            sx={{ textTransform: "none", fontWeight: 600, borderColor: BLUE, color: BLUE }}>
+            + Add all {rows.length} to Batch
+          </Button>
         </Box>
 
         <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 3, border: "1px solid #e5e7eb" }}>
@@ -709,6 +880,21 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                           <IconButton size="small" onClick={() => generateForDate(med, date, statuses[i])}
                             sx={{ bgcolor: "#EEF4FF", "&:hover": { bgcolor: "#DCE9FF" }, borderRadius: "8px" }}>
                             <LocalOfferIcon fontSize="small" sx={{ color: BLUE }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Add to batch (suggested category style)">
+                          <IconButton size="small" onClick={() => {
+                            const cat = categories[0] || "Normal";
+                            const style = CATEGORY_LABEL_STYLES[cat] || CATEGORY_LABEL_STYLES.Normal;
+                            setBatch((b) => [...b, {
+                              id: `b${Date.now()}_${med.id}`,
+                              labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
+                              fields: { name: true, expiry: false, code: false, description: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
+                              appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
+                              dims: { ...dims }, orientation, categoryChip: style.chip, previewName: med.name,
+                            }]);
+                          }} sx={{ bgcolor: "#F0FDF4", "&:hover": { bgcolor: "#DCFCE7" }, borderRadius: "8px" }}>
+                            <Typography sx={{ fontWeight: 800, color: "#16A34A", fontSize: 14, lineHeight: 1 }}>+</Typography>
                           </IconButton>
                         </Tooltip>
                       </Box>
@@ -784,6 +970,29 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         </Box>
       </Box>
 
+
+      {/* ---------- Batch tray: queue multiple different labels for one A4 print ---------- */}
+      {batch.length > 0 && (
+        <Box className="no-print" sx={{
+          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 20,
+          bgcolor: "#fff", borderTop: `2px solid ${BLUE}`, boxShadow: "0 -4px 16px rgba(0,0,0,0.1)",
+          px: 3, py: 1.5, display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap",
+        }}>
+          <Typography sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{batch.length} queued</Typography>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", flex: 1, overflowX: "auto", py: 0.5 }}>
+            {batch.map((item) => (
+              <Chip key={item.id} label={item.previewName} onDelete={() => removeFromBatch(item.id)}
+                sx={{ bgcolor: item.appearance.bg, color: item.appearance.text, fontWeight: 700, border: "1px solid #e5e7eb" }} />
+            ))}
+          </Box>
+          <Button size="small" onClick={() => setBatch([])} sx={{ textTransform: "none" }}>Clear</Button>
+          <Button variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}
+            sx={{ textTransform: "none", fontWeight: 700, borderRadius: "8px", bgcolor: BLUE, "&:hover": { bgcolor: "#1E3A8A" } }}>
+            Finish & Print ({batch.length})
+          </Button>
+        </Box>
+      )}
+
       {/* ---------- Arrange on A4 dialog ---------- */}
       <ArrangeDialog
         open={arrangeOpen}
@@ -801,13 +1010,23 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         logoSize={logoSize}
         qrUrl={qrCustomUrl}
         qrSize={qrSize}
+        categoryChip={categoryChip}
+        qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""}
       />
 
       {/* ---------- Hidden A4 print sheet (visible only when printing) ---------- */}
       <Box id="print-sheet">
-        {Array.from({ length: copies }).map((_, i) => (
-          <LabelCard key={i} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrCustomUrl} qrSize={qrSize} />
-        ))}
+        {batch.length > 0
+          ? batch.map((item) => (
+              <LabelCard key={item.id} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
+                dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize}
+                qrUrl={qrCustomUrl} qrSize={qrSize} categoryChip={item.categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+            ))
+          : Array.from({ length: copies }).map((_, i) => (
+              <LabelCard key={i} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
+                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrCustomUrl} qrSize={qrSize}
+                categoryChip={categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+            ))}
       </Box>
     </Container>
   );
@@ -838,7 +1057,7 @@ function ScaledPreview({ dims, orientation, maxBox = 320, children }) {
   );
 }
 
-function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, qrUrl, qrSize }) {
+function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, qrUrl, qrSize, categoryChip, qrMessageId }) {
   const initW = orientation === "horizontal" ? dims.width : dims.height;
   const initH = orientation === "horizontal" ? dims.height : dims.width;
 
@@ -923,7 +1142,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
           >
             <Box sx={{ width: box.w * PXPERMM, height: box.h * PXPERMM, pointerEvents: "none", transform: `scale(${scale})`, transformOrigin: "top left" }}>
               <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance}
-                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrUrl} qrSize={qrSize} />
+                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrUrl} qrSize={qrSize} categoryChip={categoryChip} qrMessageId={qrMessageId} />
             </Box>
             <Box
               onMouseDown={startResize}
@@ -949,7 +1168,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
   );
 }
 
-function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, qrUrl, qrSize }) {
+function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, qrUrl, qrSize, categoryChip, qrMessageId }) {
   const Icon = template.icon;
   const width = orientation === "horizontal" ? dims.width : dims.height;
   const height = orientation === "horizontal" ? dims.height : dims.width;
@@ -988,10 +1207,27 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           <img src={logoDataUrl} alt="logo" style={{ height: mmToPx(Math.min(width, height)) * ((logoSize ?? 28) / 100), maxWidth: mmToPx(width) * 0.5, objectFit: "contain" }} />
         </Box>
       )}
+      {categoryChip && (
+        <Box sx={{
+          position: "absolute", bottom: 4,
+          left: (logoPos?.x ?? 15) > 50 ? 4 : "auto",
+          right: (logoPos?.x ?? 15) > 50 ? "auto" : 4,
+        }}>
+          <Box sx={{
+            bgcolor: "#FFD54F", color: "#000", fontWeight: 700, fontSize: "10px",
+            borderRadius: "10px", px: 1, py: 0.3, display: "flex", alignItems: "center", gap: 0.4,
+            WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
+          }}>
+            <span>{categoryChip.icon}</span> {categoryChip.label}
+          </Box>
+        </Box>
+      )}
       {fields.qr && (qrUrl?.trim() || labelText.code || labelText.name) && (
         <Box sx={{ position: "absolute", bottom: 4, right: 4, bgcolor: "#fff", p: "3px", borderRadius: "3px", lineHeight: 0 }}>
           <QRCodeSVG
-            value={qrUrl?.trim() ? qrUrl.trim() : `${typeof window !== "undefined" ? window.location.origin : ""}/scan-result?code=${encodeURIComponent(labelText.code || labelText.name)}`}
+            value={qrUrl?.trim()
+              ? qrUrl.trim()
+              : `${typeof window !== "undefined" ? window.location.origin : ""}/scan-result?code=${encodeURIComponent(labelText.code || labelText.name)}${qrMessageId ? `&msg=${qrMessageId}` : ""}`}
             size={Math.max(40, mmToPx(Math.min(width, height)) * ((qrSize ?? 40) / 100))}
             level="H"
           />

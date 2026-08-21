@@ -8,7 +8,7 @@ import {
   Link,
 } from "@mui/material";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -57,18 +57,85 @@ let dashboardMedicinesCache = null;
 // "6 injections" — زي ما توصل من ملفات إكسل NUPCO)، فـ Number(...) عليها
 // مباشرة يرجع NaN وأي مقارنة رقمية (Low Stock، الترتيب...) تفشل بصمت. هذي
 // الدالة تسحب أول رقم موجود بالنص وتتجاهل الوحدة، بدل ما تعتمد على القيمة
-// تكون رقم صافي دايمًا
+// تكون رقم صافي دايمًا. تطبّع الأرقام العربية/الفارسية أول شي كمان (نفس
+// normalizeDigits المستخدمة بصفحة الانفنتوري)، لأن استيراد الإكسل ما يمر
+// عليها أصلًا
 const parseQuantityNumber = (value) => {
   if (value === null || value === undefined || value === "") return 0;
   if (typeof value === "number") return value;
-  const match = String(value).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  const arabicIndic = "٠١٢٣٤٥٦٧٨٩";
+  const persian = "۰۱۲۳۴۵۶۷۸۹";
+  const normalized = String(value).replace(/[٠-٩۰-۹]/g, (ch) => {
+    const arabicIdx = arabicIndic.indexOf(ch);
+    if (arabicIdx !== -1) return String(arabicIdx);
+    const persianIdx = persian.indexOf(ch);
+    if (persianIdx !== -1) return String(persianIdx);
+    return ch;
+  });
+  const match = normalized.replace(/,/g, "").match(/-?\d+(\.\d+)?/);
   return match ? parseFloat(match[0]) : 0;
+};
+
+// صفحات/تبويبات الموقع اللي البحث العام لازم يقدر يوصلها، مو بس الأدوية —
+// كل عنصر فيه كلمات مفتاحية (إنجليزي وعربي) عشان المطابقة تشتغل بأي لغة يكتب
+// فيها المستخدم، بس النتيجة نفسها تنعرض بالإنجليزي زي باقي واجهة الموقع
+const SITE_SECTIONS = [
+  { label: "Dashboard", path: "/dashboard", keywords: ["dashboard", "home", "الرئيسية", "لوحة"] },
+  { label: "Inventory", path: "/inventory", keywords: ["inventory", "medicines", "stock", "المخزون", "الأدوية"] },
+  { label: "Mawsool Orders", path: "/mawsool-orders", keywords: ["mawsool", "orders", "موصول", "طلبات"] },
+  { label: "Support", path: "/support", keywords: ["support", "contact", "help", "الدعم", "مساعدة"] },
+];
+
+// تلوّن الجزء المطابق من النص بنفس مصطلح البحث (Highlight)، عشان يبان
+// بالضبط وين صار التطابق داخل اسم الدواء أو اسم القسم
+const highlightMatch = (text, term) => {
+  if (!term || !text) return text;
+  const lowerText = String(text).toLowerCase();
+  const lowerTerm = term.toLowerCase();
+  const idx = lowerText.indexOf(lowerTerm);
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark
+        style={{
+          backgroundColor: "#FEF08A",
+          color: "inherit",
+          borderRadius: "3px",
+          padding: "0 1px",
+        }}
+      >
+        {text.slice(idx, idx + term.length)}
+      </mark>
+      {text.slice(idx + term.length)}
+    </>
+  );
 };
 
 
 function Dashboard() {
 
   const navigate = useNavigate();
+
+  // مرجع لصندوق البحث كامل (الحقل + قائمة النتائج)، نستخدمه عشان نعرف هل
+  // الضغطة صارت خارج الصندوق فنقفل القائمة تلقائيًا
+  const searchContainerRef = useRef(null);
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(event.target)
+      ) {
+        setSearchDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
 
   // =========================================================
@@ -409,6 +476,23 @@ function Dashboard() {
 
   }, [realMedicines, search]);
 
+  // تبويبات/صفحات الموقع اللي تطابق مصطلح البحث — تنعرض بالقائمة قبل الأدوية
+  const matchedSections = useMemo(() => {
+
+    if (!search.trim()) {
+      return [];
+    }
+
+    const term = search.trim().toLowerCase();
+
+    return SITE_SECTIONS.filter(
+      (section) =>
+        section.label.toLowerCase().includes(term) ||
+        section.keywords.some((k) => k.toLowerCase().includes(term))
+    );
+
+  }, [search]);
+
 
   // =========================================================
   // CARD NAVIGATION
@@ -509,10 +593,8 @@ function Dashboard() {
 
   }, [realMedicines]);
 
-  const expiringWithin30Days = useMemo(
-    () => expiringWithin30DaysFull.slice(0, 4),
-    [expiringWithin30DaysFull]
-  );
+  // البوكس صار يعرض القائمة الكاملة بسكرول داخلي بدل ما يوقف عند 4 بس
+  const expiringWithin30Days = expiringWithin30DaysFull;
 
 
   // =========================================================
@@ -561,10 +643,10 @@ function Dashboard() {
   }, [realMedicines, lowStockThreshold]);
 
 
-  const lowStockMedicines = useMemo(
-    () => lowStockMedicinesFull.slice(0, 4),
-    [lowStockMedicinesFull]
-  );
+  // القائمة كانت تُقص لأول 4 عناصر بس هنا، فالبوكس ما كان يقدر يعرض الباقي
+  // أبدًا مهما كبّرنا صندوقه. الحين نعرض القائمة كاملة جوا صندوق بسكرول
+  // داخلي (overflowY) بدل ما يطول الكرت بلا حدود
+  const lowStockMedicines = lowStockMedicinesFull;
 
 
   // =========================================================
@@ -592,8 +674,8 @@ function Dashboard() {
 
         return dateB - dateA;
 
-      })
-      .slice(0, 4);
+      });
+      // ما نقص القائمة بعد — البوكس صار يعرضها كاملة بسكرول داخلي
 
   }, [realMedicines]);
 
@@ -949,6 +1031,7 @@ function Dashboard() {
         ================================================= */}
 
         <Box
+          ref={searchContainerRef}
           sx={{
             position: "absolute",
 
@@ -973,13 +1056,18 @@ function Dashboard() {
 
             value={search}
 
-            onChange={(e) =>
-              setSearch(
-                e.target.value
-              )
-            }
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setSearchDropdownOpen(true);
+            }}
 
-            placeholder="Search medicines"
+            onFocus={() => {
+              if (search.trim()) {
+                setSearchDropdownOpen(true);
+              }
+            }}
+
+            placeholder="Search medicines, sections..."
 
             size="small"
 
@@ -1037,7 +1125,7 @@ function Dashboard() {
 
           {/* SEARCH RESULTS */}
 
-          {search && (
+          {searchDropdownOpen && search && (
 
             <Box
               sx={{
@@ -1065,71 +1153,160 @@ function Dashboard() {
               }}
             >
 
-              {filteredMedicines.length > 0 ? (
+              {matchedSections.length > 0 && (
 
-                filteredMedicines
-                  .slice(0, 6)
-                  .map(
-                    (medicine, index) => (
+                <Box>
 
-                      <Box
-                        key={index}
+                  {matchedSections.map((section, index) => (
 
+                    <Box
+                      key={`section-${section.path}`}
+
+                      onClick={() => {
+                        navigate(section.path);
+                        setSearch("");
+                        setSearchDropdownOpen(false);
+                      }}
+
+                      sx={{
+                        px: 2,
+                        py: 1.5,
+
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+
+                        borderBottom: "1px solid #F2F4F7",
+
+                        cursor: "pointer",
+
+                        "&:hover": {
+                          background: "#F8FAFC",
+                        },
+                      }}
+                    >
+
+                      <Typography
                         sx={{
-                          px: 2,
-                          py: 1.5,
-
-                          borderBottom:
-                            index !==
-                            Math.min(
-                              filteredMedicines.length,
-                              6
-                            ) - 1
-                              ? "1px solid #F2F4F7"
-                              : "none",
-
-                          cursor: "pointer",
-
-                          "&:hover": {
-                            background:
-                              "#F8FAFC",
-                          },
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          color: "#7C3AED",
+                          background: "#F3E8FF",
+                          px: "6px",
+                          py: "2px",
+                          borderRadius: "6px",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.3px",
+                          flexShrink: 0,
                         }}
                       >
+                        Section
+                      </Typography>
 
-                        <Typography
+                      <Typography
+                        sx={{
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          color: "#344054",
+                        }}
+                      >
+                        {highlightMatch(section.label, search.trim())}
+                      </Typography>
+
+                    </Box>
+
+                  ))}
+
+                </Box>
+
+              )}
+
+              {filteredMedicines.length > 0 ? (
+
+                <Box
+                  sx={{
+                    maxHeight: "280px",
+                    overflowY: "auto",
+                  }}
+                >
+
+                  {filteredMedicines
+                    .slice(0, 6)
+                    .map(
+                      (medicine, index) => (
+
+                        <Box
+                          key={medicine.id ?? index}
+
+                          onClick={() => {
+                            navigate(
+                              `/inventory?highlight=${encodeURIComponent(medicine.id)}`
+                            );
+                            setSearch("");
+                            setSearchDropdownOpen(false);
+                          }}
+
                           sx={{
-                            fontSize:
-                              "13px",
+                            px: 2,
+                            py: 1.5,
 
-                            fontWeight: 600,
+                            borderBottom:
+                              index !==
+                              Math.min(
+                                filteredMedicines.length,
+                                6
+                              ) - 1
+                                ? "1px solid #F2F4F7"
+                                : "none",
 
-                            color:
-                              "#344054",
+                            cursor: "pointer",
+
+                            "&:hover": {
+                              background:
+                                "#F8FAFC",
+                            },
                           }}
                         >
-                          {medicine.name}
-                        </Typography>
 
-                      </Box>
+                          <Typography
+                            sx={{
+                              fontSize:
+                                "13px",
 
-                    )
-                  )
+                              fontWeight: 600,
+
+                              color:
+                                "#344054",
+                            }}
+                          >
+                            {highlightMatch(medicine.name, search.trim())}
+                          </Typography>
+
+                        </Box>
+
+                      )
+                    )}
+
+                </Box>
 
               ) : (
 
-                <Box sx={{ p: 2 }}>
+                matchedSections.length === 0 && (
 
-                  <Typography
-                    sx={{
-                      fontSize: "13px",
-                      color: "#98A2B3",
-                    }}
-                  >
-                    No medicines found
-                  </Typography>
+                  <Box sx={{ p: 2 }}>
 
-                </Box>
+                    <Typography
+                      sx={{
+                        fontSize: "13px",
+                        color: "#98A2B3",
+                      }}
+                    >
+                      No results found
+                    </Typography>
+
+                  </Box>
+
+                )
 
               )}
 
@@ -1676,7 +1853,7 @@ function Dashboard() {
               </Box>
 
 
-              <Box sx={{ px: 2.5 }}>
+              <Box sx={{ px: 2.5, maxHeight: "320px", overflowY: "auto" }}>
 
                 {expiringWithin30Days.length >
                 0 ? (
@@ -1967,7 +2144,7 @@ function Dashboard() {
               </Box>
 
 
-              <Box sx={{ px: 2.5 }}>
+              <Box sx={{ px: 2.5, maxHeight: "320px", overflowY: "auto" }}>
 
                 {latestMedicines.length >
                 0 ? (
@@ -2329,7 +2506,7 @@ function Dashboard() {
               </Box>
 
 
-              <Box sx={{ px: 2.5 }}>
+              <Box sx={{ px: 2.5, maxHeight: "320px", overflowY: "auto" }}>
 
                 {lowStockMedicines.length >
                 0 ? (

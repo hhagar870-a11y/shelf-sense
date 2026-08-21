@@ -102,6 +102,49 @@ async function persistSectionsToFirestore(list) {
   await setDoc(SETTINGS_DOC_REF(), { list });
 }
 
+// سلة المهملات: مجموعة منفصلة "medicines_trash"، كل دواء محذوف يحفظ فيها
+// مع وقت الحذف، عشان نقدر نرجّعه أو ننظف اللي أقدم من شهر
+const TRASH_COLLECTION = "medicines_trash";
+const TRASH_RETENTION_DAYS = 30;
+
+async function fetchTrashFromFirestore() {
+  const snapshot = await getDocs(collection(db, TRASH_COLLECTION));
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+async function restoreMedicineFromTrash(item) {
+  const { deletedAt, ...rest } = item;
+  const id = String(item.id);
+  await setDoc(doc(db, MEDICINES_COLLECTION, id), rest);
+  await deleteDoc(doc(db, TRASH_COLLECTION, id));
+}
+
+async function permanentlyDeleteFromTrash(id) {
+  await deleteDoc(doc(db, TRASH_COLLECTION, String(id)));
+}
+
+async function emptyTrashInFirestore(items) {
+  await Promise.all(items.map((item) => deleteDoc(doc(db, TRASH_COLLECTION, String(item.id)))));
+}
+
+// تنظيف تلقائي لأي عنصر بسلة المهملات أقدم من ٣٠ يوم — نسويها وقت فتح
+// الصفحة بدل جدولة سيرفر (Cloud Functions المجدولة تحتاج خطة Blaze
+// المدفوعة)، فهذا الأسلوب يشتغل بالكامل ضمن الخطة المجانية
+async function cleanupOldTrashItems() {
+  try {
+    const items = await fetchTrashFromFirestore();
+    const cutoff = Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const expired = items.filter((item) => (item.deletedAt || 0) < cutoff);
+    if (expired.length > 0) {
+      await Promise.all(expired.map((item) => deleteDoc(doc(db, TRASH_COLLECTION, String(item.id)))));
+    }
+    return items.filter((item) => (item.deletedAt || 0) >= cutoff);
+  } catch (err) {
+    console.error("فشل تنظيف سلة المهملات القديمة:", err);
+    return [];
+  }
+}
+
 // يحوّل الأرقام العربية (١٢٣) والفارسية (۱۲۳) إلى أرقام إنجليزية عادية
 // عشان لما المستخدم يكتب كمية أو تاريخ بالأرقام العربية ما تصير NaN
 function normalizeDigits(value) {
@@ -121,11 +164,13 @@ function normalizeDigits(value) {
 // "6 injections" — زي ما توصل من ملفات إكسل NUPCO)، فـ Number(...) عليها
 // مباشرة يرجع NaN وأي مقارنة رقمية (Low Stock، الترتيب...) تفشل بصمت. هذي
 // الدالة تسحب أول رقم موجود بالنص وتتجاهل الوحدة، بدل ما تعتمد على القيمة
-// تكون رقم صافي دايمًا
+// تكون رقم صافي دايمًا. تطبّع الأرقام العربية/الفارسية أول شي كمان، لأن
+// استيراد الإكسل ما يمرّ بـ normalizeDigits زي إدخال المستخدم اليدوي
 function parseQuantityNumber(value) {
   if (value === null || value === undefined || value === "") return 0;
   if (typeof value === "number") return value;
-  const match = String(value).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  const normalized = normalizeDigits(value);
+  const match = String(normalized).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
   return match ? parseFloat(match[0]) : 0;
 }
 
@@ -208,6 +253,13 @@ import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import FilterAltIcon from "@mui/icons-material/FilterAlt";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
+import RestoreFromTrashIcon from "@mui/icons-material/RestoreFromTrash";
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import Tooltip from "@mui/material/Tooltip";
 import {
@@ -238,6 +290,9 @@ import {
   MenuItem,
   TablePagination,
   Link,
+  Snackbar,
+  Alert,
+  Badge,
 } from "@mui/material";
 
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -284,7 +339,23 @@ useEffect(() => {
   if (filterKey && filterKeyToStatus[filterKey]) {
     setSelectedStatus(filterKeyToStatus[filterKey]);
   }
+
+  // نفس الفكرة لما توديك بطاقة نتيجة بحث (من الداش بورد مثلاً) لدواء معيّن
+  // بالضبط عبر ?highlight=<id> — نصفّر أي فلاتر/بحث نشط عشان الدواء ما يكون
+  // مخفي، ونسجّل رقمه عشان نروح لصفحته الصحيحة ونومض عليه بالجدول
+  const highlightId = params.get("highlight");
+  if (highlightId) {
+    setSearch("");
+    setSelectedCategory("All");
+    setSelectedStatus("All");
+    setHighlightedMedicineId(highlightId);
+  }
 }, [location.search]);
+
+// مراجع صفوف الجدول (حسب id الدواء) عشان نقدر نسكرول لصف معيّن ونومض عليه
+const rowRefs = useRef({});
+const [highlightedMedicineId, setHighlightedMedicineId] = useState(null);
+
 const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
 const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
@@ -416,6 +487,13 @@ useEffect(() => {
   })();
 }, []);
 
+useEffect(() => {
+  (async () => {
+    const activeTrash = await cleanupOldTrashItems();
+    setTrashItems(activeTrash);
+  })();
+}, []);
+
  const [newMedicine, setNewMedicine] = useState({
   name: "",
   batch: "",
@@ -431,13 +509,24 @@ useEffect(() => {
 
 const [editIndex, setEditIndex] = useState(null);
 const [search, setSearch] = useState("");
+// true لو المستخدم كتب كود نيبكو وما انطابق مع أي اسم بقاعدة بيانات الوزارة
+const [codeNotRecognized, setCodeNotRecognized] = useState(false);
+
+// سلة المهملات
+const [trashItems, setTrashItems] = useState([]);
+const [trashOpen, setTrashOpen] = useState(false);
+const [pendingDelete, setPendingDelete] = useState(null);
+const [undoSnackOpen, setUndoSnackOpen] = useState(false);
 
 // دالة جلب الاسم تلقائياً وسريعة جداً عند كتابة الكود يدوياً
 const handleCodeChange = (e) => {
   const enteredCode = e.target.value.trim();
   setNewMedicine((prev) => ({ ...prev, code: enteredCode }));
 
-  if (!enteredCode) return;
+  if (!enteredCode) {
+    setCodeNotRecognized(false);
+    return;
+  }
 
   // البحث المباشر في قاعدة بيانات الوزارة (ministryDatabase)
   let foundName = "";
@@ -464,6 +553,10 @@ const handleCodeChange = (e) => {
       code: enteredCode,
       name: foundName,
     }));
+    setCodeNotRecognized(false);
+  } else {
+    // الكود مو موجود بقاعدة بيانات الوزارة — إما خطأ كتابة أو صنف جديد لسا ما انضاف
+    setCodeNotRecognized(true);
   }
 };
 
@@ -605,6 +698,7 @@ const handleLabelSave = () => {
 
     setOpen(false);
     setEditIndex(null);
+    setCodeNotRecognized(false);
   };
 
   // دالة تصحيح وقراءة التواريخ بدقة تامة (تحترم اليوم المحدد ولا تغيره إذا وُجد)
@@ -890,11 +984,80 @@ const processExcelImport = (rows, baseMedicines) => {
   return currentMedicines;
 };
 
-const handleDelete = (index) => {
+const handleDelete = async (index) => {
+ const medicineToDelete = medicines[index];
  const updatedMedicines = medicines.filter(
  (_, i) => i !== index
  );
  setMedicines(updatedMedicines);
+
+ // ننقله فورًا لسلة المهملات (بدل الانتظار ٥ ثواني) عشان ما تصير مشكلة
+ // لو المستخدم سكّر الصفحة بسرعة — الزر "تراجع" يرجعه فورًا من السلة
+ try {
+   await setDoc(doc(db, TRASH_COLLECTION, String(medicineToDelete.id)), {
+     ...medicineToDelete,
+     deletedAt: Date.now(),
+   });
+   setTrashItems((prev) => [...prev, { ...medicineToDelete, deletedAt: Date.now() }]);
+ } catch (err) {
+   console.error("فشل نقل الدواء لسلة المهملات:", err);
+ }
+
+ setPendingDelete({ medicine: medicineToDelete, index });
+ setUndoSnackOpen(true);
+ setTimeout(() => {
+   setPendingDelete((curr) =>
+     curr && curr.medicine.id === medicineToDelete.id ? null : curr
+   );
+ }, 5000);
+};
+
+const handleUndoDelete = async () => {
+  if (!pendingDelete) return;
+  const { medicine, index } = pendingDelete;
+
+  const restored = [...medicines];
+  restored.splice(index, 0, medicine);
+  setMedicines(restored);
+
+  try {
+    await deleteDoc(doc(db, TRASH_COLLECTION, String(medicine.id)));
+    setTrashItems((prev) => prev.filter((item) => item.id !== medicine.id));
+  } catch (err) {
+    console.error("فشل التراجع عن الحذف:", err);
+  }
+
+  setPendingDelete(null);
+  setUndoSnackOpen(false);
+};
+
+const handleRestoreFromTrash = async (item) => {
+  try {
+    await restoreMedicineFromTrash(item);
+    setTrashItems((prev) => prev.filter((t) => t.id !== item.id));
+    setMedicines((prev) => [...prev, item]);
+  } catch (err) {
+    console.error("فشل استرجاع الدواء من سلة المهملات:", err);
+  }
+};
+
+const handlePermanentDelete = async (id) => {
+  try {
+    await permanentlyDeleteFromTrash(id);
+    setTrashItems((prev) => prev.filter((t) => t.id !== id));
+  } catch (err) {
+    console.error("فشل الحذف النهائي من سلة المهملات:", err);
+  }
+};
+
+const handleEmptyTrash = async () => {
+  if (!window.confirm("Permanently delete all items in the trash? This can't be undone.")) return;
+  try {
+    await emptyTrashInFirestore(trashItems);
+    setTrashItems([]);
+  } catch (err) {
+    console.error("فشل تفريغ سلة المهملات:", err);
+  }
 };
 
 const handleDeleteAll = () => {
@@ -1223,6 +1386,40 @@ const filteredMedicines = useMemo(() => {
     return matchSearch && matchCategory && matchStatus;
   });
 }, [medicines, medicineLineNumbers, search, selectedCategory, selectedStatus]);
+
+// لما يتحدد دواء للتوهيج (highlightedMedicineId) وتكون قائمة الأدوية جاهزة،
+// نروح لصفحة الترقيم الصحيحة اللي موجود فيها هذا الدواء، ثم نسكرول له
+// ونومض عليه بضع ثواني قبل ما نلغي التوهيج تلقائيًا
+useEffect(() => {
+  if (!highlightedMedicineId || medicinesLoading) return;
+
+  const indexInFiltered = filteredMedicines.findIndex(
+    (m) => m.id === highlightedMedicineId
+  );
+
+  if (indexInFiltered === -1) return;
+
+  const targetPage = Math.floor(indexInFiltered / rowsPerPage);
+  setPage(targetPage);
+
+  const scrollTimer = setTimeout(() => {
+    const el = rowRefs.current[highlightedMedicineId];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, 150);
+
+  const clearTimer = setTimeout(() => {
+    setHighlightedMedicineId(null);
+  }, 2600);
+
+  return () => {
+    clearTimeout(scrollTimer);
+    clearTimeout(clearTimer);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [highlightedMedicineId, medicinesLoading, filteredMedicines.length]);
+
 return (
 <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
 
@@ -1273,6 +1470,13 @@ return (
       size="medium"
       value={search}
       onChange={(e) => setSearch(e.target.value)}
+      slotProps={{
+        input: {
+          startAdornment: (
+            <FilterAltIcon sx={{ color: "#94a3b8", mr: 1, fontSize: 20 }} />
+          ),
+        },
+      }}
       sx={{
         "& .MuiOutlinedInput-root": {
           borderRadius: "14px",
@@ -1388,6 +1592,7 @@ return (
             otherNames: [],
           });
 
+          setCodeNotRecognized(false);
           setOpen(true);
         }}
         sx={{
@@ -1496,6 +1701,25 @@ return (
       >
         Clear Inventory
       </Button>
+
+      <Badge badgeContent={trashItems.length} color="default" max={99}>
+        <Button
+          variant="outlined"
+          onClick={() => setTrashOpen(true)}
+          startIcon={<DeleteSweepIcon />}
+          sx={{
+            borderRadius: "12px",
+            textTransform: "none",
+            px: 2,
+            py: 1,
+            whiteSpace: "nowrap",
+            color: "#475569",
+            borderColor: "#cbd5e1",
+          }}
+        >
+          Trash
+        </Button>
+      </Badge>
     </Box>
   </Box>
 </Box>
@@ -1755,9 +1979,21 @@ return (
       // البداية من 1 مع كل صفحة أو فلتر — عشان الرقم اللي تبحث فيه يطابق
       // فعلاً الرقم اللي شايفه بعمود NO.)
       const drugCounter = medicineLineNumbers.get(medicine.id) ?? (actualIndex + 1);
+      const isHighlighted = medicine.id === highlightedMedicineId;
 
       return (
-              <TableRow key={actualIndex}>
+              <TableRow
+                key={actualIndex}
+                ref={(el) => { rowRefs.current[medicine.id] = el; }}
+                sx={isHighlighted ? {
+                  animation: "shelfSensePulseHighlight 1.3s ease-in-out 2",
+                  "@keyframes shelfSensePulseHighlight": {
+                    "0%": { backgroundColor: "#FEF9C3" },
+                    "50%": { backgroundColor: "#FDE047" },
+                    "100%": { backgroundColor: "#FEF9C3" },
+                  },
+                } : undefined}
+              >
 
               <TableCell align="center" sx={{ color: "#6b7280", fontWeight: 600 }}>
                 {drugCounter}
@@ -1817,38 +2053,39 @@ return (
   />
 ))}
 </div> 
-{[...new Set(medicine.categories || getDrugCategories(medicine.name, medicine.code))].map((category, i) => ( 
-    <span
+{[...new Set(medicine.categories || getDrugCategories(medicine.name, medicine.code))].map((category, i) => { 
+  const badgeBg =
+    category === "High Alert" ? "#E53935" :
+    category === "Hazardous" ? "#8B5CF6" :
+    category === "Sound Alike" ? "#FFD54F" :
+    category === "Look Alike" ? "#FFD54F" :
+    "#ccc";
+  const badgeColor = category === "Look Alike" || category === "Sound Alike" ? "#000" : "#fff";
+
+  return (
+    <Box
       key={i}
-      style={{
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
         marginLeft: "6px",
         padding: "4px 10px",
-whiteSpace: "nowrap",
-        borderRadius: "15px",
+        whiteSpace: "nowrap",
+        borderRadius: "6px",
         fontSize: "12px",
         fontWeight: "bold",
-       backgroundColor:
- category === "High Alert"
- ? "#E53935"
- : category === "Hazardous"
- ? "#8B5CF6"
- : category === "Sound Alike"
- ? "#FFD54F"
- : category === "Look Alike"
- ? "#FFD54F"
- : "#ccc",
-
-color:
- category === "Look Alike" || category === "Sound Alike"
- ? "#000"
- : "#fff",
+        backgroundColor: badgeBg,
+        color: badgeColor,
       }}
     >
-{category === "High Alert" && "⚠️ "}
-{category === "Sound Alike" && "👂 "}
-{category === "Look Alike" && "👁️ "}
-{category}  </span>
-  ))}
+      {category === "High Alert" && <WarningAmberIcon sx={{ fontSize: 14 }} />}
+      {category === "Sound Alike" && <RecordVoiceOverIcon sx={{ fontSize: 14 }} />}
+      {category === "Look Alike" && <VisibilityIcon sx={{ fontSize: 14 }} />}
+      {category}
+    </Box>
+  );
+})}
 </TableCell>
                 
                 {/* عمود الكود المستقل مع زر النسخ السريع والعبارات النصية الخفيفة */}
@@ -1985,7 +2222,7 @@ color:
 <TableCell align="center">
   <Box sx={{ display: "inline-flex", bgcolor: "#f3f4f6", p: 0.5, borderRadius: "10px", gap: 0.5 }}>
     <Tooltip title="Edit Medicine">
-      <IconButton size="small" onClick={() => { setNewMedicine({ ...medicine, expiryDates: medicine.expiryDates?.length ? [...medicine.expiryDates] : [medicine.expiry || ""] }); setEditIndex(actualIndex); setOpen(true); }} sx={{ bgcolor: "#fff", "&:hover": { bgcolor: "#e5e7eb" }, borderRadius: "8px" }}>
+      <IconButton size="small" onClick={() => { setNewMedicine({ ...medicine, expiryDates: medicine.expiryDates?.length ? [...medicine.expiryDates] : [medicine.expiry || ""] }); setEditIndex(actualIndex); setCodeNotRecognized(false); setOpen(true); }} sx={{ bgcolor: "#fff", "&:hover": { bgcolor: "#e5e7eb" }, borderRadius: "8px" }}>
         <EditIcon fontSize="small" sx={{ color: "#374151" }} />
       </IconButton>
     </Tooltip>
@@ -2070,6 +2307,28 @@ color:
               })
             }
           />
+
+          {codeNotRecognized && (
+            <Box
+              onClick={() => navigate("/support")}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.6,
+                mt: -1.2,
+                mb: 1,
+                cursor: "pointer",
+                width: "fit-content",
+                "&:hover": { textDecoration: "underline" },
+              }}
+            >
+              <WarningAmberIcon sx={{ fontSize: 15, color: "#d97706" }} />
+              <Typography sx={{ fontSize: 11.5, color: "#b45309" }}>
+                This code isn't recognized — could be a typo, or a new ministry
+                classification not added yet. Contact support?
+              </Typography>
+            </Box>
+          )}
 
           <TextField
             label="Quantity"
@@ -2717,6 +2976,94 @@ color:
       Version 1.0.0
     </Typography>
   </Box>
+
+  {/* توست التراجع عن الحذف — يفضل ٥ ثواني */}
+  <Snackbar
+    open={undoSnackOpen}
+    autoHideDuration={5000}
+    onClose={() => setUndoSnackOpen(false)}
+    anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+  >
+    <Alert
+      onClose={() => setUndoSnackOpen(false)}
+      severity="info"
+      variant="filled"
+      action={
+        <Button color="inherit" size="small" onClick={handleUndoDelete} sx={{ fontWeight: 700 }}>
+          UNDO
+        </Button>
+      }
+      sx={{ bgcolor: "#334155" }}
+    >
+      {pendingDelete ? `"${pendingDelete.medicine.name}" moved to trash` : "Medicine deleted"}
+    </Alert>
+  </Snackbar>
+
+  {/* نافذة سلة المهملات */}
+  <Dialog open={trashOpen} onClose={() => setTrashOpen(false)} maxWidth="md" fullWidth>
+    <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: 700 }}>
+      <DeleteSweepIcon /> Trash
+      <Typography component="span" sx={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 500, ml: 1 }}>
+        (items are kept for 30 days, then removed automatically)
+      </Typography>
+    </DialogTitle>
+    <DialogContent dividers>
+      {trashItems.length === 0 ? (
+        <Box sx={{ py: 5, textAlign: "center", color: "#94a3b8" }}>
+          <DeleteSweepIcon sx={{ fontSize: 42, mb: 1 }} />
+          <Typography>Trash is empty</Typography>
+        </Box>
+      ) : (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Nupco Code</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Deleted</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {trashItems
+              .slice()
+              .sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0))
+              .map((item) => {
+                const daysAgo = Math.floor((Date.now() - (item.deletedAt || 0)) / (24 * 60 * 60 * 1000));
+                return (
+                  <TableRow key={item.id}>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.code || "-"}</TableCell>
+                    <TableCell>{daysAgo <= 0 ? "Today" : `${daysAgo} ${daysAgo === 1 ? "day" : "days"} ago`}</TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Restore">
+                        <IconButton size="small" color="primary" onClick={() => handleRestoreFromTrash(item)}>
+                          <RestoreFromTrashIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete permanently">
+                        <IconButton size="small" color="error" onClick={() => handlePermanentDelete(item.id)}>
+                          <DeleteForeverIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+          </TableBody>
+        </Table>
+      )}
+    </DialogContent>
+    <DialogActions sx={{ p: 2 }}>
+      {trashItems.length > 0 && (
+        <Button color="error" onClick={handleEmptyTrash} sx={{ textTransform: "none", fontWeight: 600, mr: "auto" }}>
+          Delete All Permanently
+        </Button>
+      )}
+      <Button onClick={() => setTrashOpen(false)} sx={{ textTransform: "none" }}>
+        Close
+      </Button>
+    </DialogActions>
+  </Dialog>
 
 </Container>
   );
