@@ -293,11 +293,13 @@ import {
   Snackbar,
   Alert,
   Badge,
+  CircularProgress,
 } from "@mui/material";
 
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import CategoryIcon from "@mui/icons-material/Category";
 import { useNavigate, useLocation } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { importExcel } from "../utils/excelImporter";
@@ -518,6 +520,9 @@ const [trashItems, setTrashItems] = useState([]);
 const [trashOpen, setTrashOpen] = useState(false);
 const [pendingDelete, setPendingDelete] = useState(null);
 const [undoSnackOpen, setUndoSnackOpen] = useState(false);
+// أثناء نقل دواء لسلة المهملات نعطّل زره ونعرض دوّامة تحميل بدل الأيقونة،
+// عشان المستخدم يعرف إن الضغطة انسجلت ولا يضغط عليها مرتين وهو منتظر
+const [deletingIds, setDeletingIds] = useState(() => new Set());
 
 // دالة جلب الاسم تلقائياً وسريعة جداً عند كتابة الكود يدوياً
 const NUPCO_CODE_LENGTH = 13;
@@ -605,13 +610,19 @@ const handleToggleMawsool = (id) => {
 newMedicine.expiryDates = newMedicine.expiryDates.map((d) => parseFlexibleDate(d));
 
 if (editIndex !== null) {
+  // editIndex الحين يخزن id الدواء (مو رقم موقعه بالجدول) لنفس سبب مشكلة
+  // الحذف: رقم الصف اللي يشوفه المستخدم يختلف عن موقع الدواء بالمصفوفة
+  // الكاملة وقت وجود بحث/فلتر، فالبحث بالـ id يضمن تعديل نفس الدواء الصحيح
   const updatedMedicines = [...medicines];
-  updatedMedicines[editIndex] ={
- ...newMedicine,
- expiry: newMedicine.expiryDates[0] || "",
- 
- categories: getDrugCategories(newMedicine.name, newMedicine.code),
-};
+  const targetIndex = updatedMedicines.findIndex((m) => m.id === editIndex);
+  if (targetIndex !== -1) {
+    updatedMedicines[targetIndex] = {
+      ...newMedicine,
+      id: updatedMedicines[targetIndex].id,
+      expiry: newMedicine.expiryDates[0] || "",
+      categories: getDrugCategories(newMedicine.name, newMedicine.code),
+    };
+  }
 
 const handleLabelSave = () => {
   if (!labelName) return;
@@ -997,11 +1008,20 @@ const processExcelImport = (rows, baseMedicines) => {
   return currentMedicines;
 };
 
-const handleDelete = async (index) => {
+// يستقبل الآن "id" الدواء نفسه، مو رقم موقعه بالجدول. السبب: لمن يكون فيه
+// بحث/فلتر أو ترقيم صفحات فعّال، رقم الصف اللي يشوفه المستخدم (actualIndex)
+// يختلف عن رقم موقع نفس الدواء داخل مصفوفة medicines الكاملة غير المفلترة —
+// وكان يمرر مباشرة كـ "index" لهذي الدالة، فتحذف عنصر ثاني عشوائي من نفس
+// الموقع بالمصفوفة الكاملة بدل الدواء المحدد فعليًا. البحث بالـ id يضمن
+// حذف نفس الدواء اللي ضغط عليه المستخدم دائمًا، بغض النظر عن الفلترة/الترقيم
+const handleDelete = async (id) => {
+ const index = medicines.findIndex((m) => m.id === id);
+ if (index === -1) return;
  const medicineToDelete = medicines[index];
- const updatedMedicines = medicines.filter(
- (_, i) => i !== index
- );
+
+ setDeletingIds((prev) => new Set(prev).add(id));
+
+ const updatedMedicines = medicines.filter((_, i) => i !== index);
  setMedicines(updatedMedicines);
 
  // ننقله فورًا لسلة المهملات (بدل الانتظار ٥ ثواني) عشان ما تصير مشكلة
@@ -1014,6 +1034,12 @@ const handleDelete = async (index) => {
    setTrashItems((prev) => [...prev, { ...medicineToDelete, deletedAt: Date.now() }]);
  } catch (err) {
    console.error("فشل نقل الدواء لسلة المهملات:", err);
+ } finally {
+   setDeletingIds((prev) => {
+     const next = new Set(prev);
+     next.delete(id);
+     return next;
+   });
  }
 
  setPendingDelete({ medicine: medicineToDelete, index });
@@ -2235,7 +2261,7 @@ return (
 <TableCell align="center">
   <Box sx={{ display: "inline-flex", bgcolor: "#f3f4f6", p: 0.5, borderRadius: "10px", gap: 0.5 }}>
     <Tooltip title="Edit Medicine">
-      <IconButton size="small" onClick={() => { setNewMedicine({ ...medicine, expiryDates: medicine.expiryDates?.length ? [...medicine.expiryDates] : [medicine.expiry || ""] }); setEditIndex(actualIndex); setCodeNotRecognized(false); setOpen(true); }} sx={{ bgcolor: "#fff", "&:hover": { bgcolor: "#e5e7eb" }, borderRadius: "8px" }}>
+      <IconButton size="small" onClick={() => { setNewMedicine({ ...medicine, expiryDates: medicine.expiryDates?.length ? [...medicine.expiryDates] : [medicine.expiry || ""] }); setEditIndex(medicine.id); setCodeNotRecognized(false); setOpen(true); }} sx={{ bgcolor: "#fff", "&:hover": { bgcolor: "#e5e7eb" }, borderRadius: "8px" }}>
         <EditIcon fontSize="small" sx={{ color: "#374151" }} />
       </IconButton>
     </Tooltip>
@@ -2245,9 +2271,21 @@ return (
       </IconButton>
     </Tooltip>
     <Tooltip title="Delete Medicine">
-      <IconButton size="small" color="error" onClick={() => handleDelete(actualIndex)} sx={{ bgcolor: "#fff", "&:hover": { bgcolor: "#fee2e2" }, borderRadius: "8px" }}>
-        <DeleteIcon fontSize="small" />
-      </IconButton>
+      <span>
+        <IconButton
+          size="small"
+          color="error"
+          disabled={deletingIds.has(medicine.id)}
+          onClick={() => handleDelete(medicine.id)}
+          sx={{ bgcolor: "#fff", "&:hover": { bgcolor: "#fee2e2" }, borderRadius: "8px" }}
+        >
+          {deletingIds.has(medicine.id) ? (
+            <CircularProgress size={16} color="error" />
+          ) : (
+            <DeleteIcon fontSize="small" />
+          )}
+        </IconButton>
+      </span>
     </Tooltip>
   </Box>
 </TableCell>
@@ -2320,6 +2358,52 @@ return (
               })
             }
           />
+
+          {/* صندوق أزرق فاتح يظهر الكاتيقوري المصاحبة تلقائيًا بمجرد ما
+              يتعرف على اسم/كود الدواء — يختفي طبيعي لو ما فيه كاتيقوري */}
+          {(() => {
+            const previewCategories = newMedicine.name
+              ? [...new Set(getDrugCategories(newMedicine.name, newMedicine.code) || [])]
+              : [];
+            if (previewCategories.length === 0) return null;
+            return (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 1,
+                  bgcolor: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: "10px",
+                  p: 1.25,
+                  mt: 0.5,
+                  mb: 1,
+                }}
+              >
+                <CategoryIcon sx={{ fontSize: 18, color: "#2563eb", mt: 0.3 }} />
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.6 }}>
+                  <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: "#1d4ed8" }}>
+                    Category
+                  </Typography>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.6 }}>
+                    {previewCategories.map((category, i) => (
+                      <Chip
+                        key={i}
+                        label={category}
+                        size="small"
+                        sx={{
+                          bgcolor: "#dbeafe",
+                          color: "#1e40af",
+                          fontWeight: 600,
+                          fontSize: 11,
+                        }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              </Box>
+            );
+          })()}
 
           {codeTooLong && (
             <Box
