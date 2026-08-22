@@ -113,13 +113,21 @@ const highlightMatch = (text, term) => {
 };
 
 
-function Dashboard() {
+// =========================================================
+// SEARCH BAR (كومبوننت مستقل بحاله)
+// =========================================================
+// السبب الرئيسي لبطء الكتابة بالبحث كان إن حالة البحث (search) كانت
+// عايشة داخل Dashboard نفسه، فأي حرف يتكتب يعيد رسم الصفحة كاملة —
+// الرسم البياني (recharts)، جدول Low Stock، جدول Latest Medicines...
+// كل هذا يعيد الرسم من جديد كل ضغطة زر. بعزل البحث بكومبوننت مستقل
+// (وبـ React.memo)، إعادة الرسم تصير محصورة بهذا الكومبوننت الصغير بس،
+// وسرعة الكتابة ترجع طبيعية حتى مع مئات الأدوية.
+const SearchBar = React.memo(function SearchBar({ medicines }) {
 
   const navigate = useNavigate();
 
-  // مرجع لصندوق البحث كامل (الحقل + قائمة النتائج)، نستخدمه عشان نعرف هل
-  // الضغطة صارت خارج الصندوق فنقفل القائمة تلقائيًا
   const searchContainerRef = useRef(null);
+  const [search, setSearch] = useState("");
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
 
   useEffect(() => {
@@ -136,6 +144,455 @@ function Dashboard() {
     return () =>
       document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const filteredMedicines = useMemo(() => {
+
+    const term = search.trim().toLowerCase();
+    if (!term) return [];
+
+    return medicines.filter((medicine) =>
+      medicine.name?.toLowerCase().includes(term)
+    );
+
+  }, [medicines, search]);
+
+  const matchedSections = useMemo(() => {
+
+    const term = search.trim().toLowerCase();
+    if (!term) return [];
+
+    return SITE_SECTIONS.filter(
+      (section) =>
+        section.label.toLowerCase().includes(term) ||
+        section.keywords.some((k) => k.toLowerCase().includes(term))
+    );
+
+  }, [search]);
+
+  return (
+
+    <Box
+      ref={searchContainerRef}
+      sx={{
+        position: "absolute",
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: {
+          xs: "42%",
+          sm: "420px",
+          md: "500px",
+          lg: "560px",
+        },
+        maxWidth: "560px",
+      }}
+    >
+
+      <TextField
+        fullWidth
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setSearchDropdownOpen(true);
+        }}
+        onFocus={() => {
+          if (search.trim()) {
+            setSearchDropdownOpen(true);
+          }
+        }}
+        placeholder="Search medicines, sections..."
+        size="small"
+        InputProps={{
+          startAdornment: (
+            <SearchIcon
+              sx={{
+                fontSize: 20,
+                color: "#98A2B3",
+                mr: 1,
+              }}
+            />
+          ),
+        }}
+        sx={{
+          "& .MuiOutlinedInput-root": {
+            height: "44px",
+            background: "#F8FAFC",
+            borderRadius: "10px",
+            fontSize: "13px",
+            "& fieldset": {
+              borderColor: "#E4E7EC",
+            },
+            "&:hover fieldset": {
+              borderColor: "#D0D5DD",
+            },
+            "&.Mui-focused fieldset": {
+              borderColor: "#1976D2",
+              borderWidth: "1px",
+            },
+          },
+          "& input::placeholder": {
+            color: "#98A2B3",
+            opacity: 1,
+          },
+        }}
+      />
+
+      {searchDropdownOpen && search && (
+
+        <Box
+          sx={{
+            position: "absolute",
+            top: "52px",
+            left: 0,
+            width: "100%",
+            background: "#FFFFFF",
+            border: "1px solid #EAECF0",
+            borderRadius: "10px",
+            overflow: "hidden",
+            zIndex: 1000,
+            boxShadow: "0 12px 30px rgba(16,24,40,0.10)",
+          }}
+        >
+
+          {matchedSections.length > 0 && (
+
+            <Box>
+
+              {matchedSections.map((section) => (
+
+                <Box
+                  key={`section-${section.path}`}
+                  onClick={() => {
+                    navigate(section.path);
+                    setSearch("");
+                    setSearchDropdownOpen(false);
+                  }}
+                  sx={{
+                    px: 2,
+                    py: 1.5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    borderBottom: "1px solid #F2F4F7",
+                    cursor: "pointer",
+                    "&:hover": {
+                      background: "#F8FAFC",
+                    },
+                  }}
+                >
+
+                  <Typography
+                    sx={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      color: "#7C3AED",
+                      background: "#F3E8FF",
+                      px: "6px",
+                      py: "2px",
+                      borderRadius: "6px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.3px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Section
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "#344054",
+                    }}
+                  >
+                    {highlightMatch(section.label, search.trim())}
+                  </Typography>
+
+                </Box>
+
+              ))}
+
+            </Box>
+
+          )}
+
+          {filteredMedicines.length > 0 ? (
+
+            <Box
+              sx={{
+                maxHeight: "280px",
+                overflowY: "auto",
+              }}
+            >
+
+              {filteredMedicines.slice(0, 6).map((medicine, index) => (
+
+                <Box
+                  key={medicine.id ?? index}
+                  onClick={() => {
+                    navigate(
+                      `/inventory?highlight=${encodeURIComponent(medicine.id)}`
+                    );
+                    setSearch("");
+                    setSearchDropdownOpen(false);
+                  }}
+                  sx={{
+                    px: 2,
+                    py: 1.5,
+                    borderBottom:
+                      index !== Math.min(filteredMedicines.length, 6) - 1
+                        ? "1px solid #F2F4F7"
+                        : "none",
+                    cursor: "pointer",
+                    "&:hover": {
+                      background: "#F8FAFC",
+                    },
+                  }}
+                >
+
+                  <Typography
+                    sx={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "#344054",
+                    }}
+                  >
+                    {highlightMatch(medicine.name, search.trim())}
+                  </Typography>
+
+                </Box>
+
+              ))}
+
+            </Box>
+
+          ) : (
+
+            matchedSections.length === 0 && (
+
+              <Box sx={{ p: 2 }}>
+                <Typography sx={{ fontSize: "13px", color: "#98A2B3" }}>
+                  No results found
+                </Typography>
+              </Box>
+
+            )
+
+          )}
+
+        </Box>
+
+      )}
+
+    </Box>
+
+  );
+});
+
+
+// =========================================================
+// SUPERVISOR INFO (كومبوننت مستقل بحاله)
+// =========================================================
+// نفس مبدأ SearchBar بالضبط: حالة الهوفر (anchor) كانت جوّه Dashboard
+// نفسه، فكل هوفر/مغادرة على أيقونة المستخدم كان يعيد رسم الصفحة كاملة.
+// عزلها هنا يخلي الاستجابة فورية، وقللت مدة انتقال الـ Popover عشان
+// يبان ويختفي بسرعة بدل التأخير الافتراضي.
+const SupervisorInfo = React.memo(function SupervisorInfo() {
+
+  const navigate = useNavigate();
+
+  const [anchor, setAnchor] = useState(null);
+  const open = Boolean(anchor);
+
+  const handleOpen = (event) => setAnchor(event.currentTarget);
+  const handleClose = () => setAnchor(null);
+
+  return (
+
+    <Box
+      onMouseEnter={handleOpen}
+      onMouseLeave={handleClose}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+        minWidth: "260px",
+        cursor: "default",
+        borderRadius: "10px",
+        px: 1,
+        py: 0.5,
+      }}
+    >
+      <Box sx={{ position: "relative" }}>
+        <Box
+          sx={{
+            width: 46,
+            height: 46,
+            borderRadius: "50%",
+            background: "linear-gradient(135deg, #EAF5FF, #F5FAFF)",
+            border: "1px solid #D9ECFA",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#1976D2",
+            flexShrink: 0,
+          }}
+        >
+          <AccountCircleIcon sx={{ fontSize: 34 }} />
+        </Box>
+
+        <Box
+          sx={{
+            position: "absolute",
+            bottom: -2,
+            right: -2,
+            width: 18,
+            height: 18,
+            borderRadius: "50%",
+            background: "#1976D2",
+            border: "2px solid #FFFFFF",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <VerifiedUserIcon sx={{ fontSize: 11, color: "#FFFFFF" }} />
+        </Box>
+      </Box>
+
+      <Box>
+        <Typography
+          sx={{
+            fontSize: "14px",
+            color: "#172B4D",
+            fontWeight: 700,
+            lineHeight: 1.3,
+          }}
+        >
+          Welcome back, Dr. Abdullah Alateeq
+        </Typography>
+
+        <Typography
+          sx={{
+            fontSize: "11px",
+            color: "#667085",
+            fontWeight: 500,
+            lineHeight: 1.4,
+            mt: 0.2,
+          }}
+        >
+          Pharmacy Supervisor · Full system access
+        </Typography>
+      </Box>
+
+      <Popover
+        open={open}
+        anchorEl={anchor}
+        onClose={handleClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        disableRestoreFocus
+        transitionDuration={{ enter: 100, exit: 80 }}
+        slotProps={{
+          paper: {
+            onMouseEnter: () => setAnchor((prev) => prev ?? anchor),
+            onMouseLeave: handleClose,
+            sx: {
+              mt: 1.5,
+              ml: 1,
+              borderRadius: "20px",
+              boxShadow: "0 20px 40px -15px rgba(16,24,40,0.1)",
+              border: "1px solid #F1F5F9",
+              p: 2.5,
+              width: "270px",
+              background: "#FFFFFF",
+            },
+          },
+        }}
+      >
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: "12px",
+                background: "#EFF6FF",
+                color: "#2563EB",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <VerifiedUserIcon sx={{ fontSize: 20 }} />
+            </Box>
+            <Box>
+              <Typography sx={{ fontSize: "13px", fontWeight: 700, color: "#0F172A", lineHeight: 1.2 }}>
+                Pharmacy Supervisor
+              </Typography>
+              <Typography sx={{ fontSize: "11px", color: "#64748B", fontWeight: 500, mt: 0.3 }}>
+                Inpatient Operations
+              </Typography>
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              background: "#F8FAFC",
+              borderRadius: "12px",
+              p: 1.5,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Typography sx={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>System Access</Typography>
+              <Typography sx={{ fontSize: "11px", fontWeight: 700, color: "#0F172A" }}>Full Control</Typography>
+            </Box>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Typography sx={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>Account Status</Typography>
+              <Typography sx={{ fontSize: "11px", fontWeight: 700, color: "#16A34A", display: "flex", alignItems: "center", gap: 0.5 }}>
+                ● Active
+              </Typography>
+            </Box>
+          </Box>
+
+          <Box
+            onClick={() => navigate("/login")}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 1,
+              py: 1.2,
+              borderRadius: "10px",
+              background: "#FEF2F2",
+              color: "#DC2626",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              "&:hover": {
+                background: "#FEE2E2",
+              },
+            }}
+          >
+            <LogoutIcon sx={{ fontSize: 18 }} />
+            <Typography sx={{ fontSize: "12px", fontWeight: 700 }}>
+              Log Out
+            </Typography>
+          </Box>
+
+        </Box>
+      </Popover>
+    </Box>
+
+  );
+});
+
+
+function Dashboard() {
+
+  const navigate = useNavigate();
 
 
   // =========================================================
@@ -440,59 +897,6 @@ function Dashboard() {
   // =========================================================
   // SEARCH
   // =========================================================
-
-  const [search, setSearch] = React.useState("");
-
-
-  // =========================================================
-  // SUPERVISOR INFO POPOVER (يظهر عند الضغط على صورة/اسم المستخدم)
-  // =========================================================
-
-  const [supervisorAnchor, setSupervisorAnchor] = useState(null);
-
-  const handleOpenSupervisorInfo = (event) => {
-    setSupervisorAnchor(event.currentTarget);
-  };
-
-  const handleCloseSupervisorInfo = () => {
-    setSupervisorAnchor(null);
-  };
-
-  const supervisorPopoverOpen = Boolean(supervisorAnchor);
-
-
-  const filteredMedicines = useMemo(() => {
-
-    if (!search.trim()) {
-      return [];
-    }
-
-
-    return realMedicines.filter((medicine) =>
-      medicine.name
-        ?.toLowerCase()
-        .includes(search.toLowerCase())
-    );
-
-  }, [realMedicines, search]);
-
-  // تبويبات/صفحات الموقع اللي تطابق مصطلح البحث — تنعرض بالقائمة قبل الأدوية
-  const matchedSections = useMemo(() => {
-
-    if (!search.trim()) {
-      return [];
-    }
-
-    const term = search.trim().toLowerCase();
-
-    return SITE_SECTIONS.filter(
-      (section) =>
-        section.label.toLowerCase().includes(term) ||
-        section.keywords.some((k) => k.toLowerCase().includes(term))
-    );
-
-  }, [search]);
-
 
   // =========================================================
   // CARD NAVIGATION
@@ -837,484 +1241,14 @@ function Dashboard() {
         ================================================= */}
 
     {/* USER SECTION */}
-<Box
-  onMouseEnter={handleOpenSupervisorInfo}
-  onMouseLeave={handleCloseSupervisorInfo}
-  sx={{
-    display: "flex",
-    alignItems: "center",
-    gap: 1.5,
-    minWidth: "260px",
-    cursor: "default",
-    borderRadius: "10px",
-    px: 1,
-    py: 0.5,
-  }}
->
-  <Box sx={{ position: "relative" }}>
-    <Box
-      sx={{
-        width: 46,
-        height: 46,
-        borderRadius: "50%",
-        background: "linear-gradient(135deg, #EAF5FF, #F5FAFF)",
-        border: "1px solid #D9ECFA",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#1976D2",
-        flexShrink: 0,
-      }}
-    >
-      <AccountCircleIcon sx={{ fontSize: 34 }} />
-    </Box>
-
-    <Box
-      sx={{
-        position: "absolute",
-        bottom: -2,
-        right: -2,
-        width: 18,
-        height: 18,
-        borderRadius: "50%",
-        background: "#1976D2",
-        border: "2px solid #FFFFFF",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <VerifiedUserIcon sx={{ fontSize: 11, color: "#FFFFFF" }} />
-    </Box>
-  </Box>
-
-  <Box>
-    <Typography
-      sx={{
-        fontSize: "14px",
-        color: "#172B4D",
-        fontWeight: 700,
-        lineHeight: 1.3,
-      }}
-    >
-      Welcome back, Dr. Abdullah Alateeq
-    </Typography>
-
-    <Typography
-      sx={{
-        fontSize: "11px",
-        color: "#667085",
-        fontWeight: 500,
-        lineHeight: 1.4,
-        mt: 0.2,
-      }}
-    >
-      Pharmacy Supervisor · Full system access
-    </Typography>
-  </Box>
-  
-  {/* SUPERVISOR INFO POPOVER (مدمج داخله لضمان استقرار الماوس) */}
-  {/* SUPERVISOR INFO POPOVER */}
-<Popover
-  open={supervisorPopoverOpen}
-  anchorEl={supervisorAnchor}
-  onClose={handleCloseSupervisorInfo}
-  anchorOrigin={{
-    vertical: "bottom",
-    horizontal: "left",
-  }}
-  transformOrigin={{
-    vertical: "top",
-    horizontal: "left",
-  }}
-  disableRestoreFocus
-  slotProps={{
-    paper: {
-      onMouseEnter: () => setSupervisorAnchor(supervisorAnchor),
-      onMouseLeave: handleCloseSupervisorInfo,
-      sx: {
-        mt: 1.5,
-        ml: 1,
-        borderRadius: "20px",
-        boxShadow: "0 20px 40px -15px rgba(16,24,40,0.1)",
-        border: "1px solid #F1F5F9",
-        p: 2.5,
-        width: "270px",
-        background: "#FFFFFF",
-      },
-    },
-  }}
->
-  <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-    
-    {/* هيدر البطاقة الناعم */}
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-      <Box
-        sx={{
-          width: 40,
-          height: 40,
-          borderRadius: "12px",
-          background: "#EFF6FF",
-          color: "#2563EB",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <VerifiedUserIcon sx={{ fontSize: 20 }} />
-      </Box>
-      <Box>
-        <Typography sx={{ fontSize: "13px", fontWeight: 700, color: "#0F172A", lineHeight: 1.2 }}>
-          Pharmacy Supervisor
-        </Typography>
-        <Typography sx={{ fontSize: "11px", color: "#64748B", fontWeight: 500, mt: 0.3 }}>
-          Inpatient Operations
-        </Typography>
-      </Box>
-    </Box>
-
-    {/* تفاصيل الحالة بصندوق رمادي خفيف */}
-    <Box
-      sx={{
-        background: "#F8FAFC",
-        borderRadius: "12px",
-        p: 1.5,
-        display: "flex",
-        flexDirection: "column",
-        gap: 1,
-      }}
-    >
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Typography sx={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>System Access</Typography>
-        <Typography sx={{ fontSize: "11px", fontWeight: 700, color: "#0F172A" }}>Full Control</Typography>
-      </Box>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Typography sx={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>Account Status</Typography>
-        <Typography sx={{ fontSize: "11px", fontWeight: 700, color: "#16A34A", display: "flex", alignItems: "center", gap: 0.5 }}>
-          ● Active
-        </Typography>
-      </Box>
-    </Box>
-
-    {/* زر تسجيل الخروج الجديد */}
-    <Box
-      onClick={() => navigate("/login")} // عدلي المسار هنا إلى صفحة تسجيل الدخول لديك إن كان مختلفاً مثل "/" مثلاً
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 1,
-        py: 1.2,
-        borderRadius: "10px",
-        background: "#FEF2F2",
-        color: "#DC2626",
-        cursor: "pointer",
-        transition: "all 0.2s ease",
-        "&:hover": {
-          background: "#FEE2E2",
-        },
-      }}
-    >
-      <LogoutIcon sx={{ fontSize: 18 }} />
-      <Typography sx={{ fontSize: "12px", fontWeight: 700 }}>
-        Log Out
-      </Typography>
-    </Box>
-
-  </Box>
-</Popover>
-</Box>
+    <SupervisorInfo />
 
 
         {/* =================================================
             SEARCH
         ================================================= */}
 
-        <Box
-          ref={searchContainerRef}
-          sx={{
-            position: "absolute",
-
-            left: "50%",
-
-            transform:
-              "translateX(-50%)",
-
-            width: {
-              xs: "42%",
-              sm: "420px",
-              md: "500px",
-              lg: "560px",
-            },
-
-            maxWidth: "560px",
-          }}
-        >
-
-          <TextField
-            fullWidth
-
-            value={search}
-
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setSearchDropdownOpen(true);
-            }}
-
-            onFocus={() => {
-              if (search.trim()) {
-                setSearchDropdownOpen(true);
-              }
-            }}
-
-            placeholder="Search medicines, sections..."
-
-            size="small"
-
-            InputProps={{
-              startAdornment: (
-                <SearchIcon
-                  sx={{
-                    fontSize: 20,
-                    color: "#98A2B3",
-                    mr: 1,
-                  }}
-                />
-              ),
-            }}
-
-            sx={{
-              "& .MuiOutlinedInput-root": {
-
-                height: "44px",
-
-                background:
-                  "#F8FAFC",
-
-                borderRadius:
-                  "10px",
-
-                fontSize: "13px",
-
-                "& fieldset": {
-                  borderColor:
-                    "#E4E7EC",
-                },
-
-                "&:hover fieldset": {
-                  borderColor:
-                    "#D0D5DD",
-                },
-
-                "&.Mui-focused fieldset": {
-                  borderColor:
-                    "#1976D2",
-
-                  borderWidth: "1px",
-                },
-
-              },
-
-              "& input::placeholder": {
-                color: "#98A2B3",
-                opacity: 1,
-              },
-            }}
-          />
-
-
-          {/* SEARCH RESULTS */}
-
-          {searchDropdownOpen && search && (
-
-            <Box
-              sx={{
-                position: "absolute",
-
-                top: "52px",
-
-                left: 0,
-
-                width: "100%",
-
-                background: "#FFFFFF",
-
-                border:
-                  "1px solid #EAECF0",
-
-                borderRadius: "10px",
-
-                overflow: "hidden",
-
-                zIndex: 1000,
-
-                boxShadow:
-                  "0 12px 30px rgba(16,24,40,0.10)",
-              }}
-            >
-
-              {matchedSections.length > 0 && (
-
-                <Box>
-
-                  {matchedSections.map((section, index) => (
-
-                    <Box
-                      key={`section-${section.path}`}
-
-                      onClick={() => {
-                        navigate(section.path);
-                        setSearch("");
-                        setSearchDropdownOpen(false);
-                      }}
-
-                      sx={{
-                        px: 2,
-                        py: 1.5,
-
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-
-                        borderBottom: "1px solid #F2F4F7",
-
-                        cursor: "pointer",
-
-                        "&:hover": {
-                          background: "#F8FAFC",
-                        },
-                      }}
-                    >
-
-                      <Typography
-                        sx={{
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          color: "#7C3AED",
-                          background: "#F3E8FF",
-                          px: "6px",
-                          py: "2px",
-                          borderRadius: "6px",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.3px",
-                          flexShrink: 0,
-                        }}
-                      >
-                        Section
-                      </Typography>
-
-                      <Typography
-                        sx={{
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          color: "#344054",
-                        }}
-                      >
-                        {highlightMatch(section.label, search.trim())}
-                      </Typography>
-
-                    </Box>
-
-                  ))}
-
-                </Box>
-
-              )}
-
-              {filteredMedicines.length > 0 ? (
-
-                <Box
-                  sx={{
-                    maxHeight: "280px",
-                    overflowY: "auto",
-                  }}
-                >
-
-                  {filteredMedicines
-                    .slice(0, 6)
-                    .map(
-                      (medicine, index) => (
-
-                        <Box
-                          key={medicine.id ?? index}
-
-                          onClick={() => {
-                            navigate(
-                              `/inventory?highlight=${encodeURIComponent(medicine.id)}`
-                            );
-                            setSearch("");
-                            setSearchDropdownOpen(false);
-                          }}
-
-                          sx={{
-                            px: 2,
-                            py: 1.5,
-
-                            borderBottom:
-                              index !==
-                              Math.min(
-                                filteredMedicines.length,
-                                6
-                              ) - 1
-                                ? "1px solid #F2F4F7"
-                                : "none",
-
-                            cursor: "pointer",
-
-                            "&:hover": {
-                              background:
-                                "#F8FAFC",
-                            },
-                          }}
-                        >
-
-                          <Typography
-                            sx={{
-                              fontSize:
-                                "13px",
-
-                              fontWeight: 600,
-
-                              color:
-                                "#344054",
-                            }}
-                          >
-                            {highlightMatch(medicine.name, search.trim())}
-                          </Typography>
-
-                        </Box>
-
-                      )
-                    )}
-
-                </Box>
-
-              ) : (
-
-                matchedSections.length === 0 && (
-
-                  <Box sx={{ p: 2 }}>
-
-                    <Typography
-                      sx={{
-                        fontSize: "13px",
-                        color: "#98A2B3",
-                      }}
-                    >
-                      No results found
-                    </Typography>
-
-                  </Box>
-
-                )
-
-              )}
-
-            </Box>
-
-          )}
-
-        </Box>
+        <SearchBar medicines={realMedicines} />
 
 
         {/* =================================================
@@ -1324,7 +1258,7 @@ function Dashboard() {
         <Box
           sx={{
             marginLeft: "auto",
-
+mt: "-12px",
             display: "flex",
             alignItems: "center",
 
@@ -1332,7 +1266,7 @@ function Dashboard() {
 
             width: {
               xs: "130px",
-              md: "270px",
+              md: "400px",
             },
 
             overflow: "visible",
@@ -1345,7 +1279,7 @@ function Dashboard() {
             alt="Hail Health Cluster"
 
             style={{
-              width: "150px",
+              width: "248px",
 
               height: "68px",
 

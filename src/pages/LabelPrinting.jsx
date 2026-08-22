@@ -40,6 +40,8 @@ import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import PrintIcon from "@mui/icons-material/Print";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import EditIcon from "@mui/icons-material/Edit";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import PaletteIcon from "@mui/icons-material/Palette";
 import AspectRatioIcon from "@mui/icons-material/AspectRatio";
 import FormatBoldIcon from "@mui/icons-material/FormatBold";
@@ -233,6 +235,8 @@ const DOSAGE_FORMS = [
   "ampoule", "ampule", "vial", "tablet", "tab", "capsule", "cap", "syringe", "syring",
   "injection", "inj", "cream", "gel", "ointment", "solution", "sol", "suspension", "susp",
   "drops", "drop", "patch", "inhaler", "spray", "lotion", "powder", "sachet", "suppository", "bottle",
+  "syrup", "elixir", "emulsion", "foam", "aerosol", "gargle", "mouthwash", "shampoo", "paste",
+  "granules", "pessary", "enema", "lozenge", "chewable", "liquid",
 ];
 function splitMedicationText(text) {
   if (!text || !text.trim()) return [text || ""];
@@ -302,6 +306,20 @@ export default function LabelPrinting() {
   const [categoryChip, setCategoryChip] = useState(null);
   const [showCategoryBadge, setShowCategoryBadge] = useState(true);
   const [reviewOpen, setReviewOpen] = useState(false);
+  // Whether the batch should print with one shared QR link instead of each
+  // label's own — off by default so every medicine keeps its own link.
+  const [batchUnifyQr, setBatchUnifyQr] = useState(false);
+  const [batchUnifiedQrUrl, setBatchUnifiedQrUrl] = useState("");
+  // Lightweight per-session checklist so the user can track which medicines
+  // in the shelf list they've already printed/handled.
+  const [doneMeds, setDoneMeds] = useState(() => new Set());
+  function toggleDone(id) {
+    setDoneMeds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
   // The hidden #print-sheet only gets real, heavy content (QR/barcode SVGs for
   // every batch item) right before printing — not on every batch edit — so
   // adding many labels to the batch stays fast.
@@ -487,6 +505,10 @@ export default function LabelPrinting() {
       orientation,
       categoryChip,
       badgeAvailable: categoryChip,
+      // Captured at add-time so each queued label keeps its OWN QR link —
+      // it doesn't silently pick up whatever link is in the editor later.
+      qrUrl: qrCustomUrl,
+      qrMessageId: qrMessageHtml.trim() ? qrMessageId : "",
       previewName: labelText.name || template.title,
     }]);
   }
@@ -509,6 +531,11 @@ export default function LabelPrinting() {
         orientation,
         categoryChip: showCategoryBadge ? badgeChipDef : null,
         badgeAvailable: badgeChipDef,
+        // Left blank on purpose — each label then auto-generates its OWN
+        // scan link from its own medicine code/name, so a batch of many
+        // different medicines never all points to one shared link.
+        qrUrl: "",
+        qrMessageId: "",
         previewName: med.name,
       };
     });
@@ -596,7 +623,12 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 <Chip size="small" label={selectedMed.name} sx={{ fontWeight: 700, bgcolor: BLUE, color: "#fff" }} />
                 {selectedDate && <Chip size="small" label={selectedDate} variant="outlined" />}
                 {labelText.status && <Chip size="small" label={labelText.status} color={STATUS_CHIP[labelText.status]} />}
-                <Button size="small" onClick={() => { setSelectedMed(null); setSelectedDate(""); }} sx={{ textTransform: "none", ml: "auto" }}>
+                <Button size="small" onClick={() => {
+                  setSelectedMed(null);
+                  setSelectedDate("");
+                  setLabelText(buildLabelText(null, "", template));
+                  setCategoryChip(null);
+                }} sx={{ textTransform: "none", ml: "auto" }}>
                   Clear
                 </Button>
               </Box>
@@ -660,8 +692,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                       </Typography>
                     )}
                     {fields.name && expandedField === "name" && (
-                      <TextField fullWidth size="small" label="Medication Name" sx={{ mt: 1 }}
-                        helperText="Edit freely — e.g. trim off the strength/dosage if you don't want it shown."
+                      <TextField fullWidth multiline minRows={2} maxRows={5} label="Medication Name" sx={{ mt: 1 }}
+                        helperText="Edit freely — trim the strength/dosage if you don't want it shown, or press Enter to control the line breaks yourself."
                         value={labelText.name} onChange={(e) => setLabelText({ ...labelText, name: e.target.value })} />
                     )}
                     {fields.action && expandedField === "action" && (
@@ -944,6 +976,11 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
             sx={{ textTransform: "none", fontWeight: 600, borderColor: BLUE, color: BLUE }}>
             + Add all {rows.length} to Batch
           </Button>
+          {doneMeds.size > 0 && (
+            <Typography variant="caption" sx={{ color: "#16A34A", fontWeight: 600 }}>
+              ✓ {doneMeds.size} of {rows.length} done
+            </Typography>
+          )}
         </Box>
 
         <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 3, border: "1px solid #e5e7eb" }}>
@@ -954,7 +991,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 <TableCell sx={{ fontWeight: 700 }}>Medicine</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Qty</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Expiry</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 700 }}>Label</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Done</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -965,7 +1002,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4, color: "#9ca3af" }}>No medicines match this filter.</TableCell></TableRow>
               )}
               {pagedRows.map(({ med, dates, statuses, categories }, idx) => (
-                <TableRow key={med.id} hover selected={selectedMed?.id === med.id}>
+                <TableRow key={med.id} hover selected={selectedMed?.id === med.id} sx={{ opacity: doneMeds.has(med.id) ? 0.5 : 1 }}>
                   <TableCell sx={{ color: "#9ca3af" }}>{page * rowsPerPage + idx + 1}</TableCell>
                   <TableCell>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -1041,7 +1078,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                               labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
                               fields: { name: true, expiry: false, code: false, description: false, status: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
                               appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
-                              dims: { ...dims }, orientation, categoryChip: showCategoryBadge ? badgeChipDef : null, badgeAvailable: badgeChipDef, previewName: med.name,
+                              dims: { ...dims }, orientation, categoryChip: showCategoryBadge ? badgeChipDef : null, badgeAvailable: badgeChipDef,
+                              qrUrl: "", qrMessageId: "", previewName: med.name,
                             }]);
                           }} sx={{ bgcolor: "#F0FDF4", "&:hover": { bgcolor: "#DCFCE7" }, borderRadius: "8px" }}>
                             <Typography sx={{ fontWeight: 800, color: "#16A34A", fontSize: 14, lineHeight: 1 }}>+</Typography>
@@ -1051,7 +1089,13 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                     ))}
                   </TableCell>
                   <TableCell align="center">
-                    <Typography variant="caption" sx={{ color: "#9ca3af" }}>↑ per date</Typography>
+                    <Tooltip title={doneMeds.has(med.id) ? "Marked done — click to unmark" : "Mark as done once printed / handled"}>
+                      <IconButton size="small" onClick={() => toggleDone(med.id)}>
+                        {doneMeds.has(med.id)
+                          ? <CheckCircleIcon fontSize="small" sx={{ color: "#16A34A" }} />
+                          : <RadioButtonUncheckedIcon fontSize="small" sx={{ color: "#d1d5db" }} />}
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -1154,6 +1198,10 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         setBatch={setBatch}
         removeFromBatch={removeFromBatch}
         onConfirmPrint={() => { setReviewOpen(false); handlePrint(); }}
+        batchUnifyQr={batchUnifyQr}
+        setBatchUnifyQr={setBatchUnifyQr}
+        batchUnifiedQrUrl={batchUnifiedQrUrl}
+        setBatchUnifiedQrUrl={setBatchUnifiedQrUrl}
       />
 
       {/* ---------- Arrange on A4 dialog ---------- */}
@@ -1185,7 +1233,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
           ? batch.map((item) => (
               <LabelCard key={item.id} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
                 dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
-                qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} categoryChip={item.categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChip={item.categoryChip}
+                qrMessageId={batchUnifyQr ? "" : item.qrMessageId} />
             ))
           : Array.from({ length: copies }).map((_, i) => (
               <LabelCard key={i} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
@@ -1197,7 +1246,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
   );
 }
 
-function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint }) {
+function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl }) {
   const [page, setPage] = useState(0);
   const rowsPerPage = 15;
   useEffect(() => { if (open) setPage(0); }, [open]);
@@ -1216,6 +1265,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   }
 
   const pageItems = batch.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const hasQrItems = batch.some((it) => it.fields.qr);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -1234,6 +1284,22 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
           <Button size="small" variant="outlined" onClick={() => bulkBadge(true)} sx={{ textTransform: "none" }}>Badge ON for all</Button>
           <Button size="small" variant="outlined" onClick={() => bulkBadge(false)} sx={{ textTransform: "none" }}>Badge OFF for all</Button>
         </Box>
+
+        {hasQrItems && (
+          <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 1.5, mb: 2 }}>
+            <FormControlLabel
+              control={<Checkbox size="small" checked={batchUnifyQr} onChange={(e) => setBatchUnifyQr(e.target.checked)} />}
+              label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Use one QR link for every label in this batch</Typography>} />
+            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", ml: 4, mb: batchUnifyQr ? 1 : 0 }}>
+              Off by default — each medicine keeps the link it was added with (or its own auto-generated one).
+            </Typography>
+            {batchUnifyQr && (
+              <TextField size="small" fullWidth placeholder="https://... (applies to every QR code in this batch)"
+                sx={{ ml: 4, width: "calc(100% - 32px)" }}
+                value={batchUnifiedQrUrl} onChange={(e) => setBatchUnifiedQrUrl(e.target.value)} />
+            )}
+          </Box>
+        )}
 
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
@@ -1525,7 +1591,10 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         fontSize: `${appearance.fontSize + (fields.name ? 2 : 4)}px`,
         lineHeight: 1.25,
       }}>
-        {(fields.name && labelText.name ? splitMedicationText(labelText.name) : mainTitle.split("\n")).map((line, i) => (
+        {(fields.name && labelText.name
+          ? (labelText.name.includes("\n") ? labelText.name.split("\n").filter((l) => l.trim()) : splitMedicationText(labelText.name))
+          : mainTitle.split("\n")
+        ).map((line, i) => (
           <Box key={i}>{line}</Box>
         ))}
       </Box>

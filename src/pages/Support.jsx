@@ -1,6 +1,6 @@
 import React from "react";
 import { Container, Paper, Box, Typography, Button, Divider, Link } from "@mui/material";
-import { Mail, MessageCircle, ExternalLink, GraduationCap, Code2, Sparkles, FolderDown, FileText } from "lucide-react";
+import { Mail, MessageCircle, ExternalLink, GraduationCap, Code2, Sparkles, FolderDown, FileText, Search } from "lucide-react";
 
 export default function Support() {
   const handleEmailClick = () => {
@@ -148,7 +148,42 @@ export default function Support() {
 
             {/* Resource Cards Stack */}
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              
+
+              {/* Resource: Quick Search Tool (NEW — searches all 3 policy files at once) */}
+              <Paper
+                component="a"
+                href="REPLACE_WITH_YOUR_HOSTED_TOOL_URL"
+                target="_blank"
+                rel="noopener noreferrer"
+                elevation={0}
+                sx={{
+                  p: 2,
+                  borderRadius: 3,
+                  bgcolor: "#faf5ff",
+                  border: "1px solid #e9d5ff",
+                  display: "block",
+                  textDecoration: "none",
+                  transition: "all 0.2s ease",
+                  "&:hover": { borderColor: "#9333ea", bgcolor: "#f3e8ff" }
+                }}
+              >
+                <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
+                  <Search size={18} color="#9333ea" style={{ marginTop: 2 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#0f172a", mb: 0.5 }}>
+                      Quick Classification Search Tool
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#64748b", display: "block", lineHeight: 1.4 }}>
+                      Search across all 3 policy files (LASA, Hazardous, High-Alert) at once and see every classification a medication falls under.
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#a855f7", display: "block", mt: 0.5, fontSize: "10.5px", fontWeight: 600 }}>
+                      For quick reference only — always confirm against the official policy for critical decisions.
+                    </Typography>
+                  </Box>
+                  <ExternalLink size={15} color="#9333ea" style={{ marginTop: 2, flexShrink: 0 }} />
+                </Box>
+              </Paper>
+
               {/* Resource 1: System Presentation (لسا ما جهزناه — نعرضه
                   باهت وغير قابل للنقر، مع "Not available currently") */}
               <Paper 

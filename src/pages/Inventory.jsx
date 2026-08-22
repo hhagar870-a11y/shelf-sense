@@ -1854,7 +1854,7 @@ return (
       src="/logo.png"
       alt="Hail Health Cluster"
       sx={{
-        width: 220,
+        width:350,
         height: "auto",
         display: "block",
         objectFit: "contain",

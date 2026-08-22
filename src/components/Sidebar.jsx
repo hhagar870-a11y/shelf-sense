@@ -93,12 +93,13 @@ export default function Sidebar() {
           }}
         >
           <img
-            src="/logo.png"
+            src="/logo2.png"
             alt="System Logo"
             style={{
               width: 200,
               height: 200,
               objectFit: "contain",
+              
             }}
           />
         </Box>

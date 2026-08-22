@@ -29,6 +29,8 @@ import PrintIcon from "@mui/icons-material/Print";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SettingsIcon from "@mui/icons-material/Settings";
 import EventBusyIcon from "@mui/icons-material/EventBusy";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 
 import useInventoryAlerts from "../hooks/useInventoryAlerts";
 
@@ -63,6 +65,14 @@ const REMINDER_TYPES = [
   {
     value: "shipment",
     label: "Incoming Mawsool shipment",
+  },
+  {
+    value: "inventory_check",
+    label: "Periodic inventory check",
+  },
+  {
+    value: "mawsool_order",
+    label: "Mawsool order request",
   },
   {
     value: "custom",
@@ -103,6 +113,9 @@ export default function AlertsCenter() {
 
   const [settingsOpen, setSettingsOpen] =
     useState(false);
+
+  const [alertTab, setAlertTab] =
+    useState("nearExpiry");
 
   const [form, setForm] = useState({
     title: "",
@@ -179,15 +192,60 @@ export default function AlertsCenter() {
     needsLabel.length;
 
 
+  const ALERT_TABS = [
+    {
+      key: "nearExpiry",
+      label: "Near expiry",
+      data: nearExpiry,
+      color: colors.warning,
+      bg: colors.warningBg,
+      icon: WarningAmberIcon,
+      getChip: (a) => `${a.daysRemaining}d left`,
+    },
+    {
+      key: "expired",
+      label: "Expired",
+      data: expired,
+      color: colors.error,
+      bg: colors.errorBg,
+      icon: ErrorIcon,
+      getChip: (a) =>
+        `${Math.abs(a.daysRemaining)}d ago`,
+    },
+    {
+      key: "needsLabel",
+      label: "Needs label",
+      data: needsLabel,
+      color: colors.primary,
+      bg: colors.primaryBg,
+      icon: PrintIcon,
+      getChip: (a) =>
+        a.daysRemaining == null
+          ? "Label"
+          : a.daysRemaining < 0
+          ? `${Math.abs(a.daysRemaining)}d ago`
+          : `${a.daysRemaining}d left`,
+    },
+  ];
+
+  const activeAlertTab =
+    ALERT_TABS.find(
+      (t) => t.key === alertTab
+    ) || ALERT_TABS[0];
+
+
   function openNewReminderDialog(
     presetType = "general"
   ) {
 
+    const presetTitles = {
+      shipment: "Incoming Mawsool shipment",
+      inventory_check: "Periodic inventory check",
+      mawsool_order: "Mawsool order request",
+    };
+
     setForm({
-      title:
-        presetType === "shipment"
-          ? "Incoming Mawsool shipment"
-          : "",
+      title: presetTitles[presetType] || "",
       note: "",
       time: "09:00",
       type: presetType,
@@ -733,89 +791,41 @@ export default function AlertsCenter() {
                 }}
               >
 
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
-                  mb={1.75}
-                >
+                <Box mb={1.75}>
 
-                  <Box>
-
-                    <Typography
-                      sx={{
-                        fontSize: 10.5,
-                        fontWeight: 800,
-                        color: "#98A2B3",
-                        textTransform:
-                          "uppercase",
-                        letterSpacing: ".6px",
-                      }}
-                    >
-                      Selected day
-                    </Typography>
-
-                    <Typography
-                      sx={{
-                        fontSize: 16,
-                        fontWeight: 800,
-                        color: "#172B4D",
-                        mt: .3,
-                      }}
-                    >
-                      {selectedDay.toLocaleDateString(
-                        "en-US",
-                        {
-                          weekday:
-                            "long",
-                          day: "numeric",
-                          month: "long",
-                        }
-                      )}
-                    </Typography>
-
-                  </Box>
-
-
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={
-                      <LocalShippingIcon
-                        sx={{
-                          fontSize: 17,
-                        }}
-                      />
-                    }
-                    onClick={() =>
-                      openNewReminderDialog(
-                        "shipment"
-                      )
-                    }
+                  <Typography
                     sx={{
-                      height: 35,
-                      borderRadius:
-                        "9px",
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      color: "#98A2B3",
                       textTransform:
-                        "none",
-                      fontWeight: 700,
-                      borderColor:
-                        "#DCE4EC",
-                      color:
-                        "#475467",
-
-                      "&:hover": {
-                        borderColor:
-                          colors.primary,
-                        background:
-                          "#F8FBFF",
-                      },
+                        "uppercase",
+                      letterSpacing: ".6px",
                     }}
                   >
-                    Shipment
-                  </Button>
+                    Selected day
+                  </Typography>
 
-                </Stack>
+                  <Typography
+                    sx={{
+                      fontSize: 16,
+                      fontWeight: 800,
+                      color: "#172B4D",
+                      mt: .3,
+                    }}
+                  >
+                    {selectedDay.toLocaleDateString(
+                      "en-US",
+                      {
+                        weekday:
+                          "long",
+                        day: "numeric",
+                        month: "long",
+                      }
+                    )}
+                  </Typography>
+
+                </Box>
 
 
                 {selectedDayReminders.length ===
@@ -1006,6 +1016,7 @@ export default function AlertsCenter() {
               <CardContent
                 sx={{
                   p: 2.5,
+                  pb: 1.5,
                 }}
               >
 
@@ -1062,12 +1073,96 @@ export default function AlertsCenter() {
                 </Stack>
 
 
-                {totalInventoryAlerts ===
+                {/* TABS */}
+
+                <Box
+                  sx={{
+                    display: "flex",
+                    gap: .6,
+                    p: .5,
+                    mb: 2,
+                    borderRadius: "12px",
+                    background: "#F3F5F8",
+                  }}
+                >
+
+                  {ALERT_TABS.map((tab) => {
+
+                    const active =
+                      tab.key === alertTab;
+
+                    return (
+
+                      <Box
+                        key={tab.key}
+                        onClick={() =>
+                          setAlertTab(tab.key)
+                        }
+                        sx={{
+                          flex: 1,
+                          minWidth: 0,
+                          cursor: "pointer",
+                          textAlign: "center",
+                          borderRadius: "9px",
+                          py: .85,
+                          px: .5,
+                          transition:
+                            "all .15s ease",
+                          background: active
+                            ? "#FFFFFF"
+                            : "transparent",
+                          boxShadow: active
+                            ? "0 1px 4px rgba(16,24,40,.08)"
+                            : "none",
+                        }}
+                      >
+
+                        <Typography
+                          sx={{
+                            fontSize: 11.5,
+                            fontWeight: 800,
+                            color: active
+                              ? tab.color
+                              : "#8A96A8",
+                            overflow: "hidden",
+                            textOverflow:
+                              "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {tab.label}
+                        </Typography>
+
+                        <Typography
+                          sx={{
+                            fontSize: 15,
+                            fontWeight: 800,
+                            mt: .1,
+                            color: active
+                              ? "#172B4D"
+                              : "#B0B8C4",
+                          }}
+                        >
+                          {tab.data.length}
+                        </Typography>
+
+                      </Box>
+
+                    );
+
+                  })}
+
+                </Box>
+
+
+                {/* LIST */}
+
+                {activeAlertTab.data.length ===
                 0 ? (
 
                   <Box
                     sx={{
-                      py: 3,
+                      py: 4,
                       textAlign:
                         "center",
                     }}
@@ -1077,136 +1172,124 @@ export default function AlertsCenter() {
                       fontSize={13}
                       color="#98A2B3"
                     >
-                      No inventory alerts
+                      No items in this list
                     </Typography>
 
                   </Box>
 
                 ) : (
 
-                  <Stack spacing={1.5}>
+                  <Stack
+                    spacing={1.1}
+                    sx={{
+                      maxHeight: 400,
+                      overflowY: "auto",
+                      pr: .5,
+                      mr: -.5,
 
-                    {[
-                      ...nearExpiry,
-                      ...expired,
-                      ...needsLabel,
-                    ].map((a, index) => {
+                      "&::-webkit-scrollbar": {
+                        width: 5,
+                      },
 
-                      const isExpired =
-                        expired.some(
-                          (x) =>
-                            x.id === a.id
-                        );
+                      "&::-webkit-scrollbar-thumb":
+                        {
+                          background:
+                            "#D8DEE6",
+                          borderRadius: 10,
+                        },
 
-                      const isLabel =
-                        needsLabel.some(
-                          (x) =>
-                            x.id === a.id
-                        );
+                      "&::-webkit-scrollbar-track":
+                        {
+                          background:
+                            "transparent",
+                        },
+                    }}
+                  >
 
+                    {activeAlertTab.data.map(
+                      (a, index) => {
 
-                      return (
+                        const TabIcon =
+                          activeAlertTab.icon;
 
-                        <Stack
-                          key={`${a.id}-${index}`}
-                          direction="row"
-                          alignItems="center"
-                          spacing={1}
-                          sx={{
-                            minWidth: 0,
-                          }}
-                        >
+                        return (
 
-                          <Box
-                            sx={iconBadgeSx(
-                              isExpired
-                                ? colors.error
-                                : isLabel
-                                ? colors.primary
-                                : colors.warning,
-                              isExpired
-                                ? colors.errorBg
-                                : isLabel
-                                ? colors.primaryBg
-                                : colors.warningBg
-                            )}
-                          >
-
-                            {isExpired ? (
-
-                              <ErrorIcon
-                                fontSize="small"
-                              />
-
-                            ) : isLabel ? (
-
-                              <PrintIcon
-                                fontSize="small"
-                              />
-
-                            ) : (
-
-                              <WarningAmberIcon
-                                fontSize="small"
-                              />
-
-                            )}
-
-                          </Box>
-
-
-                          <Typography
+                          <Stack
+                            key={`${a.id}-${index}`}
+                            direction="row"
+                            alignItems="center"
+                            spacing={1}
                             sx={{
-                              flex: 1,
                               minWidth: 0,
-                              fontSize: 12.5,
-                              fontWeight: 700,
-                              color:
-                                "#344054",
-                              overflow:
-                                "hidden",
-                              textOverflow:
-                                "ellipsis",
-                              whiteSpace:
-                                "nowrap",
+                              p: .9,
+                              borderRadius: "11px",
+
+                              "&:hover": {
+                                background:
+                                  "#FAFBFC",
+                              },
                             }}
                           >
-                            {a.name}
-                          </Typography>
+
+                            <Box
+                              sx={iconBadgeSx(
+                                activeAlertTab.color,
+                                activeAlertTab.bg
+                              )}
+                            >
+
+                              <TabIcon
+                                fontSize="small"
+                              />
+
+                            </Box>
 
 
-                          <Chip
-                            size="small"
-                            label={
-                              isExpired
-                                ? `${Math.abs(
-                                    a.daysRemaining
-                                  )}d ago`
-                                : `${a.daysRemaining}d left`
-                            }
-                            sx={{
-                              height: 23,
-                              borderRadius:
-                                "7px",
-                              flexShrink: 0,
-                              background:
-                                isExpired
-                                  ? colors.errorBg
-                                  : "#FFF4E5",
-                              color:
-                                isExpired
-                                  ? colors.error
-                                  : colors.warning,
-                              fontSize: 10,
-                              fontWeight: 800,
-                            }}
-                          />
+                            <Typography
+                              sx={{
+                                flex: 1,
+                                minWidth: 0,
+                                fontSize: 12.5,
+                                fontWeight: 700,
+                                color:
+                                  "#344054",
+                                overflow:
+                                  "hidden",
+                                textOverflow:
+                                  "ellipsis",
+                                whiteSpace:
+                                  "nowrap",
+                              }}
+                            >
+                              {a.name}
+                            </Typography>
 
-                        </Stack>
 
-                      );
+                            <Chip
+                              size="small"
+                              label={activeAlertTab.getChip(
+                                a
+                              )}
+                              sx={{
+                                height: 23,
+                                borderRadius:
+                                  "7px",
+                                flexShrink: 0,
+                                background:
+                                  activeAlertTab.bg,
+                                color:
+                                  activeAlertTab.color,
+                                fontSize: 10,
+                                fontWeight: 800,
+                              }}
+                            />
 
-                    })}
+                          </Stack>
+
+                        );
+
+                      }
+                    )}
 
                   </Stack>
 
@@ -1324,6 +1407,175 @@ export default function AlertsCenter() {
                 >
                   Schedule shipment
                 </Button>
+
+              </CardContent>
+
+            </Card>
+
+
+            {/* INVENTORY CHECK / ORDER REMINDER */}
+
+            <Card
+              sx={{
+                mt: 2.5,
+                borderRadius: "18px",
+                border: "none",
+                background:
+                  "linear-gradient(135deg,#0E9384,#14B8A6)",
+                color: "#FFFFFF",
+                boxShadow:
+                  "0 8px 22px rgba(14,147,132,.16)",
+              }}
+            >
+
+              <CardContent
+                sx={{
+                  p: 2.5,
+                }}
+              >
+
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="flex-start"
+                >
+
+                  <Box>
+
+                    <Typography
+                      sx={{
+                        fontSize: 16,
+                        fontWeight: 800,
+                      }}
+                    >
+                      Stock check due?
+                    </Typography>
+
+                    <Typography
+                      sx={{
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        mt: .6,
+                        color:
+                          "rgba(255,255,255,.78)",
+                        maxWidth: 280,
+                      }}
+                    >
+                      Schedule a periodic inventory
+                      check or a Mawsool order
+                      reminder.
+                    </Typography>
+
+                  </Box>
+
+
+                  <Box
+                    sx={{
+                      width: 42,
+                      height: 42,
+                      borderRadius:
+                        "12px",
+                      background:
+                        "rgba(255,255,255,.15)",
+                      display: "flex",
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "center",
+                    }}
+                  >
+
+                    <FactCheckIcon />
+
+                  </Box>
+
+                </Stack>
+
+
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{
+                    mt: 2,
+                  }}
+                >
+
+                  <Button
+                    fullWidth
+                    startIcon={
+                      <FactCheckIcon
+                        sx={{
+                          fontSize: 17,
+                        }}
+                      />
+                    }
+                    onClick={() =>
+                      openNewReminderDialog(
+                        "inventory_check"
+                      )
+                    }
+                    sx={{
+                      height: 39,
+                      borderRadius:
+                        "10px",
+                      background:
+                        "#FFFFFF",
+                      color:
+                        "#0E9384",
+                      textTransform:
+                        "none",
+                      fontWeight: 800,
+                      fontSize: 12.5,
+
+                      "&:hover": {
+                        background:
+                          "#F5FBFA",
+                      },
+                    }}
+                  >
+                    Inventory check
+                  </Button>
+
+
+                  <Button
+                    fullWidth
+                    startIcon={
+                      <ShoppingCartIcon
+                        sx={{
+                          fontSize: 17,
+                        }}
+                      />
+                    }
+                    onClick={() =>
+                      openNewReminderDialog(
+                        "mawsool_order"
+                      )
+                    }
+                    sx={{
+                      height: 39,
+                      borderRadius:
+                        "10px",
+                      background:
+                        "rgba(255,255,255,.15)",
+                      color:
+                        "#FFFFFF",
+                      textTransform:
+                        "none",
+                      fontWeight: 800,
+                      fontSize: 12.5,
+                      border:
+                        "1px solid rgba(255,255,255,.35)",
+
+                      "&:hover": {
+                        background:
+                          "rgba(255,255,255,.24)",
+                      },
+                    }}
+                  >
+                    Order Mawsool
+                  </Button>
+
+                </Stack>
 
               </CardContent>
 
