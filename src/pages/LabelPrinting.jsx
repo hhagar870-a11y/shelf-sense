@@ -38,6 +38,8 @@ import {
 } from "@mui/material";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import PrintIcon from "@mui/icons-material/Print";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
+import EditIcon from "@mui/icons-material/Edit";
 import PaletteIcon from "@mui/icons-material/Palette";
 import AspectRatioIcon from "@mui/icons-material/AspectRatio";
 import FormatBoldIcon from "@mui/icons-material/FormatBold";
@@ -45,6 +47,8 @@ import FormatAlignLeftIcon from "@mui/icons-material/FormatAlignLeft";
 import FormatAlignCenterIcon from "@mui/icons-material/FormatAlignCenter";
 import FormatAlignRightIcon from "@mui/icons-material/FormatAlignRight";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import HearingIcon from "@mui/icons-material/Hearing";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import { AlertCircle as ErrorOutline } from "lucide-react";
 import DoNotDisturbAltIcon from "@mui/icons-material/DoNotDisturbAlt";
 import GroupsIcon from "@mui/icons-material/Groups";
@@ -104,12 +108,27 @@ const CATEGORY_STYLE = {
 // yellow (with a small ear/eye badge) for Sound/Look-Alike, plain white
 // for medicines with no category.
 const CATEGORY_LABEL_STYLES = {
-  Hazardous: { bg: "#8B5CF6", text: "#fff", accent: "#fff", chip: null },
-  "High Alert": { bg: "#E53935", text: "#fff", accent: "#fff", chip: null },
-  "Sound Alike": { bg: "#FFD54F", text: "#000", accent: "#000", chip: { icon: "👂", label: "Sound Alike" } },
-  "Look Alike": { bg: "#FFD54F", text: "#000", accent: "#000", chip: { icon: "👁️", label: "Look Alike" } },
+  Hazardous: { bg: "#9269F6", text: "#fff", accent: "#fff", chip: null },
+  "High Alert": { bg: "#DA2E20", text: "#fff", accent: "#fff", chip: null },
+  "Sound Alike": { bg: "#FFFF55", text: "#000", accent: "#000", chip: { category: "Sound Alike", label: "Sound Alike" } },
+  "Look Alike": { bg: "#FFFF55", text: "#000", accent: "#000", chip: { category: "Look Alike", label: "Look Alike" } },
   Normal: { bg: "#FFFFFF", text: "#111827", accent: "#1D4ED8", chip: null },
 };
+
+// A medicine can carry more than one category tag. The printed sticker should
+// stay ONE solid colour (never force a choice between two full swatches):
+// High Alert / Hazardous wins as the base colour, and Sound/Look Alike becomes
+// a small corner badge on top of it. If only Sound/Look Alike applies, that
+// yellow IS the base colour (matches the approved solid-yellow sticker).
+const PRIMARY_CATS = ["High Alert", "Hazardous"];
+const BADGE_CATS = ["Sound Alike", "Look Alike"];
+function resolveCategoryLook(cats) {
+  const primary = PRIMARY_CATS.find((c) => cats.includes(c));
+  const secondary = BADGE_CATS.find((c) => cats.includes(c));
+  if (primary) return { base: primary, badge: secondary || null };
+  if (secondary) return { base: secondary, badge: null };
+  return { base: "Normal", badge: null };
+}
 
 const SIZE_PRESETS = {
   small: { width: 50, height: 30 },
@@ -121,22 +140,22 @@ const SIZE_PRESETS = {
 const TEMPLATES = [
   {
     id: "near-expiry",
-    name: "Near Expiry Sticker",
+    name: "Near Expiry Label",
     icon: WarningAmberIcon,
     bg: "#FDF6EC", text: "#B3261E", accent: "#ED6C02",
     title: "NEAR EXPIRY",
     dims: { width: 70, height: 45 },
-    fields: { name: true, expiry: true, code: false, description: false, action: true, message: false, qr: false, barcode: false, logo: false },
+    fields: { name: true, expiry: true, code: false, status: true, action: true, message: false, qr: false, barcode: false, logo: false },
     action: "USE FIRST",
   },
   {
     id: "expired",
-    name: "Expired Sticker",
+    name: "Expired Label",
     icon: ErrorOutline,
     bg: "#FDECEA", text: "#7A0C0C", accent: "#D32F2F",
     title: "EXPIRED",
     dims: { width: 70, height: 45 },
-    fields: { name: true, expiry: true, code: false, description: false, action: true, message: false, qr: false, barcode: false, logo: false },
+    fields: { name: true, expiry: true, code: false, status: true, action: true, message: false, qr: false, barcode: false, logo: false },
     action: "DO NOT USE",
   },
   {
@@ -206,6 +225,39 @@ function buildLabelText(med, expiry, template) {
   };
 }
 
+// Splits a free-typed medication name like "Epinephrine 1mg/1ml ampoule" into
+// [Name, Strength, Dosage form] so the printed label matches the approved
+// layout (one line each). Falls back to the original text untouched if no
+// strength/form pattern is recognized, so any free text still edits fine.
+const DOSAGE_FORMS = [
+  "ampoule", "ampule", "vial", "tablet", "tab", "capsule", "cap", "syringe", "syring",
+  "injection", "inj", "cream", "gel", "ointment", "solution", "sol", "suspension", "susp",
+  "drops", "drop", "patch", "inhaler", "spray", "lotion", "powder", "sachet", "suppository", "bottle",
+];
+function splitMedicationText(text) {
+  if (!text || !text.trim()) return [text || ""];
+  const words = text.trim().split(/\s+/);
+  if (words.length < 2) return [text];
+
+  let formIdx = -1;
+  for (let i = words.length - 1; i >= 0; i--) {
+    if (DOSAGE_FORMS.includes(words[i].toLowerCase().replace(/[.,]/g, ""))) { formIdx = i; break; }
+  }
+  let strengthStart = -1, strengthEnd = -1;
+  for (let i = 0; i < words.length; i++) {
+    if (/\d/.test(words[i])) { if (strengthStart === -1) strengthStart = i; strengthEnd = i; }
+  }
+  if (formIdx === -1 && strengthStart === -1) return [text]; // nothing recognized — keep as one line
+
+  const nameEnd = strengthStart !== -1 ? strengthStart : formIdx;
+  const name = words.slice(0, nameEnd).join(" ");
+  const strengthWordEnd = formIdx !== -1 ? formIdx : strengthEnd + 1;
+  const strength = strengthStart !== -1 ? words.slice(strengthStart, strengthWordEnd).join(" ") : "";
+  const form = formIdx !== -1 ? words.slice(formIdx).join(" ") : words.slice(strengthEnd + 1).join(" ");
+  const lines = [name, strength, form].filter(Boolean);
+  return lines.length ? lines : [text];
+}
+
 export default function LabelPrinting() {
   const navigate = useNavigate();
   const [medicines, setMedicines] = useState([]);
@@ -235,12 +287,25 @@ export default function LabelPrinting() {
   const [arrangement, setArrangement] = useState({ x: 10, y: 10 });
   const [arrangeOpen, setArrangeOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("content");
+  // Which content field's settings panel is open — only one at a time,
+  // so checking several boxes in a row doesn't stack every panel at once.
+  const [expandedField, setExpandedField] = useState(null);
   const [logoDataUrl, setLogoDataUrl] = useState("");
-  const [logoPos, setLogoPos] = useState({ x: 15, y: 85 });
-  const [logoSize, setLogoSize] = useState(28);
+  // Default corner matches the approved sticker: logo bottom-right, in its own small white strip.
+  const [logoPos, setLogoPos] = useState({ x: 82, y: 80 });
+  const [logoSize, setLogoSize] = useState(20);
+  const [logoBg, setLogoBg] = useState(true); // white backing behind the logo, like the approved sticker
   const [qrCustomUrl, setQrCustomUrl] = useState("");
   const [qrSize, setQrSize] = useState(40);
+  // Opposite corner from the logo's default, so they never start out overlapping.
+  const [qrPos, setQrPos] = useState({ x: 15, y: 88 });
   const [categoryChip, setCategoryChip] = useState(null);
+  const [showCategoryBadge, setShowCategoryBadge] = useState(true);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  // The hidden #print-sheet only gets real, heavy content (QR/barcode SVGs for
+  // every batch item) right before printing — not on every batch edit — so
+  // adding many labels to the batch stays fast.
+  const [printReady, setPrintReady] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [batch, setBatch] = useState([]);
   const [qrMessageHtml, setQrMessageHtml] = useState("");
@@ -377,6 +442,7 @@ export default function LabelPrinting() {
     document.getElementById("label-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  const EXPANDABLE_FIELDS = ["name", "action", "message", "qr"];
   function toggleField(key) {
     setFields((f) => {
       const next = { ...f, [key]: !f[key] };
@@ -387,15 +453,28 @@ export default function LabelPrinting() {
       if (key === "action" && next.action) next.message = false;
       return next;
     });
+    // Checking an expandable field opens its panel (and closes any other,
+    // so only one settings panel is ever open at a time); unchecking it
+    // closes the panel if it was the one open.
+    setExpandedField((cur) => {
+      const turningOn = !fields[key];
+      if (EXPANDABLE_FIELDS.includes(key)) return turningOn ? key : (cur === key ? null : cur);
+      return cur;
+    });
   }
 
-  // Apply one of the four fixed category looks (purple/red/yellow/white),
+  // Apply the medicine's resolved look (solid colour + optional small badge),
   // used both for the "Suggested Labels" row and the batch select-all.
-  function applyCategoryStyle(cat) {
-    const style = CATEGORY_LABEL_STYLES[cat] || CATEGORY_LABEL_STYLES.Normal;
-    setFields((f) => ({ ...f, name: true, logo: true }));
+  // Explicitly clears leftover action/message/expiry/status from whatever
+  // template was active before, so the bottom message bar doesn't appear
+  // uninvited.
+  function applyCategoryStyle(cats, withBadge = showCategoryBadge) {
+    const categories = Array.isArray(cats) ? cats : [cats];
+    const { base, badge } = resolveCategoryLook(categories);
+    const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
+    setFields((f) => ({ ...f, name: true, logo: true, action: false, message: false, expiry: false, status: false }));
     setAppearance((a) => ({ ...a, bg: style.bg, text: style.text, accent: style.accent }));
-    setCategoryChip(style.chip);
+    setCategoryChip(withBadge && badge ? CATEGORY_LABEL_STYLES[badge].chip : null);
   }
 
   function addToBatch() {
@@ -407,6 +486,7 @@ export default function LabelPrinting() {
       dims: { ...dims },
       orientation,
       categoryChip,
+      badgeAvailable: categoryChip,
       previewName: labelText.name || template.title,
     }]);
   }
@@ -417,16 +497,18 @@ export default function LabelPrinting() {
 
   function addAllFilteredToBatch() {
     const items = rows.map(({ med, categories }) => {
-      const cat = categories[0] || "Normal";
-      const style = CATEGORY_LABEL_STYLES[cat] || CATEGORY_LABEL_STYLES.Normal;
+      const { base, badge } = resolveCategoryLook(categories);
+      const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
+      const badgeChipDef = badge ? CATEGORY_LABEL_STYLES[badge].chip : null;
       return {
         id: `b${Date.now()}_${med.id}`,
         labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
-        fields: { name: true, expiry: false, code: false, description: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
+        fields: { name: true, expiry: false, code: false, description: false, status: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
         appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
         dims: { ...dims },
         orientation,
-        categoryChip: style.chip,
+        categoryChip: showCategoryBadge ? badgeChipDef : null,
+        badgeAvailable: badgeChipDef,
         previewName: med.name,
       };
     });
@@ -434,11 +516,19 @@ export default function LabelPrinting() {
   }
 
   useEffect(() => {
-    if (!fields.logo && activeTab === "branding") setActiveTab("content");
+    if (!fields.logo && !fields.qr && activeTab === "branding") setActiveTab("content");
   }, [fields.logo, activeTab]);
 
+  useEffect(() => {
+    const reset = () => setPrintReady(false);
+    window.addEventListener("afterprint", reset);
+    return () => window.removeEventListener("afterprint", reset);
+  }, []);
+
   function handlePrint() {
-    window.print();
+    setPrintReady(true);
+    // Let the print-sheet mount with real content before invoking the browser dialog.
+    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
   }
 
   function confirmArrangement(newDims, newArrangement) {
@@ -453,7 +543,7 @@ export default function LabelPrinting() {
     { key: "name", label: "Medication Name" },
     { key: "expiry", label: "Expiry Date" },
     { key: "code", label: "NUPCO Code" },
-    { key: "description", label: "Description text" },
+    { key: "status", label: "Status (Expired / Near Expiry)" },
     { key: "action", label: "Action / Instruction" },
     { key: "message", label: "Custom Message" },
     { key: "qr", label: "QR Code (scan for details)" },
@@ -525,8 +615,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 sx={{ borderBottom: "1px solid #e5e7eb", mb: 2, minHeight: 40 }}
               >
                 <Tab value="content" label="Content" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700 }} />
-                {fields.logo && (
-                  <Tab value="branding" label="✎ Branding" sx={{
+                {(fields.logo || fields.qr) && (
+                  <Tab value="branding" label="✎ Position" sx={{
                     textTransform: "none", minHeight: 40, fontWeight: 700,
                     color: activeTab === "branding" ? "#fff" : "#1D4ED8",
                     bgcolor: activeTab === "branding" ? "#1D4ED8" : "#EAF2FF",
@@ -542,33 +632,48 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                   <Box>
                     <Box sx={{ display: "flex", flexDirection: "column" }}>
                       {fieldMeta.map((f) => (
-                        <FormControlLabel
-                          key={f.key}
-                          control={<Checkbox size="small" checked={fields[f.key]} onChange={() => toggleField(f.key)} />}
-                          label={<Typography variant="body2">{f.label}</Typography>}
-                        />
+                        <Box key={f.key} sx={{ display: "flex", alignItems: "center" }}>
+                          <FormControlLabel sx={{ flex: 1 }}
+                            control={<Checkbox size="small" checked={fields[f.key]} onChange={() => toggleField(f.key)} />}
+                            label={<Typography variant="body2">{f.label}</Typography>}
+                          />
+                          {EXPANDABLE_FIELDS.includes(f.key) && fields[f.key] && (
+                            <Tooltip title={expandedField === f.key ? "Close" : "Edit"}>
+                              <IconButton size="small"
+                                onClick={() => setExpandedField((cur) => (cur === f.key ? null : f.key))}
+                                sx={{ color: expandedField === f.key ? BLUE : "#9ca3af" }}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </Box>
                       ))}
                     </Box>
-                    {fields.logo && (
-                      <Typography variant="caption" sx={{ color: "#1D4ED8", display: "block", mt: -0.5, mb: 1, ml: 4, fontWeight: 600 }}>
-                        → Edit position & size in the ✎ Branding tab above
+                    {fields.qr && (
+                      <Typography variant="caption" sx={{ color: "#9ca3af", display: "block", mt: -0.5, mb: 1, ml: 4 }}>
+                        Note: if printed very small, some mobile phone cameras may not be able to scan this QR code.
                       </Typography>
                     )}
-                    {fields.name && (
+                    {(fields.logo || fields.qr) && (
+                      <Typography variant="caption" sx={{ color: "#1D4ED8", display: "block", mt: -0.5, mb: 1, ml: 4, fontWeight: 600 }}>
+                        → Edit position & size in the ✎ Position tab above
+                      </Typography>
+                    )}
+                    {fields.name && expandedField === "name" && (
                       <TextField fullWidth size="small" label="Medication Name" sx={{ mt: 1 }}
                         helperText="Edit freely — e.g. trim off the strength/dosage if you don't want it shown."
                         value={labelText.name} onChange={(e) => setLabelText({ ...labelText, name: e.target.value })} />
                     )}
-                    {fields.action && (
+                    {fields.action && expandedField === "action" && (
                       <TextField fullWidth size="small" label="Action / Instruction" sx={{ mt: 1.5 }}
                         value={labelText.action} onChange={(e) => setLabelText({ ...labelText, action: e.target.value })} />
                     )}
-                    {fields.message && (
+                    {fields.message && expandedField === "message" && (
                       <TextField fullWidth size="small" label="Custom message" sx={{ mt: 1.5 }}
                         placeholder="e.g. CHECK BEFORE DISPENSING"
                         value={labelText.message} onChange={(e) => setLabelText({ ...labelText, message: e.target.value })} />
                     )}
-                    {fields.qr && (
+                    {fields.qr && expandedField === "qr" && (
                       <>
                         <TextField fullWidth size="small" label="Custom link for QR (optional)" sx={{ mt: 1.5 }}
                           placeholder="Leave blank to link to this medicine automatically"
@@ -600,17 +705,14 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                             {qrMessageSaved && <Typography variant="caption" sx={{ color: "#2E7D32" }}>Saved ✓</Typography>}
                           </Box>
                         )}
-
-                        <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mt: 1.5 }}>QR code size</Typography>
-                        <Slider size="small" min={20} max={70} value={qrSize}
-                          onChange={(e, v) => setQrSize(v)} />
                       </>
                     )}
                   </Box>
                 )}
 
                 {activeTab === "branding" && fields.logo && (
-                  <Box sx={{ bgcolor: "#EAF2FF", border: "1px solid #BFDBFE", borderRadius: 2, p: 2 }}>
+                  <Box sx={{ bgcolor: "#EAF2FF", border: "1px solid #BFDBFE", borderRadius: 2, p: 2, mb: fields.qr ? 2 : 0 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Logo</Typography>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 2 }}>
                       {logoDataUrl && <img src={logoDataUrl} alt="logo" style={{ height: 32, borderRadius: 4 }} />}
                       <Button component="label" size="small" variant="outlined" sx={{ textTransform: "none" }}>
@@ -620,6 +722,9 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                     </Box>
                     {logoDataUrl && (
                       <>
+                        <FormControlLabel sx={{ mb: 1 }}
+                          control={<Checkbox size="small" checked={logoBg} onChange={(e) => setLogoBg(e.target.checked)} />}
+                          label={<Typography variant="body2">White background behind logo</Typography>} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
                         <Slider size="small" min={0} max={100} value={logoPos.x}
                           onChange={(e, v) => setLogoPos({ ...logoPos, x: v })} sx={{ mb: 1 }} />
@@ -631,6 +736,21 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                           onChange={(e, v) => setLogoSize(v)} />
                       </>
                     )}
+                  </Box>
+                )}
+
+                {activeTab === "branding" && fields.qr && (
+                  <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>QR code</Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
+                    <Slider size="small" min={0} max={100} value={qrPos.x}
+                      onChange={(e, v) => setQrPos({ ...qrPos, x: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
+                    <Slider size="small" min={0} max={100} value={qrPos.y}
+                      onChange={(e, v) => setQrPos({ ...qrPos, y: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
+                    <Slider size="small" min={20} max={70} value={qrSize}
+                      onChange={(e, v) => setQrSize(v)} />
                   </Box>
                 )}
 
@@ -696,7 +816,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrCustomUrl} qrSize={qrSize} categoryChip={categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} categoryChip={categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
@@ -718,39 +838,55 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 </Button>
               </Box>
             </Box>
-          </Box>
 
-          {/* ---------- Suggested Labels (based on this medicine's categories) ---------- */}
-          {selectedMed && (
-            <>
-              <Divider sx={{ my: 4 }} />
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>Suggested Labels for {selectedMed.name}</Typography>
-              <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 2 }}>
-                Based on this medicine's category — click one to apply it, pre-filled and ready.
-              </Typography>
-              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+            {/* ---------- Suggested Label strip — lives beside the editor, not buried below it ---------- */}
+            {selectedMed && (
+              <Box sx={{
+                width: { xs: "100%", md: 200 }, flexShrink: 0,
+                bgcolor: "#FAFAFA", border: "1px solid #e5e7eb", borderRadius: 3, p: 2,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
+              }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, textAlign: "center" }}>Suggested Label</Typography>
+                <Typography variant="caption" sx={{ color: "#6b7280", textAlign: "center", display: "block" }}>
+                  Based on {selectedMed.name}'s category
+                </Typography>
                 {(() => {
                   const cats = [...new Set(selectedMed.categories || getDrugCategories(selectedMed.name, selectedMed.code))];
-                  const list = cats.length ? cats : ["Normal"];
-                  return list.map((cat) => {
-                    const style = CATEGORY_LABEL_STYLES[cat] || CATEGORY_LABEL_STYLES.Normal;
-                    return (
-                      <Paper key={cat} onClick={() => applyCategoryStyle(cat)} elevation={0}
+                  const { base, badge } = resolveCategoryLook(cats);
+                  const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
+                  const badgeChip = badge ? CATEGORY_LABEL_STYLES[badge].chip : null;
+                  return (
+                    <>
+                      <Paper onClick={() => applyCategoryStyle(cats)} elevation={0}
                         sx={{ p: 1.5, borderRadius: 3, cursor: "pointer", textAlign: "center", border: "1px solid #e5e7eb", "&:hover": { borderColor: BLUE } }}>
                         <Box sx={{
-                          width: 120, height: 70, borderRadius: 1.5, bgcolor: style.bg, color: style.text,
-                          display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, border: "1px solid #e5e7eb",
+                          width: 140, height: 80, bgcolor: style.bg, color: style.text,
+                          display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13,
+                          border: "2px solid #000", position: "relative",
                         }}>
                           {selectedMed.name}
+                          {badgeChip && showCategoryBadge && (
+                            <Box sx={{ position: "absolute", top: 4, left: 4 }}>
+                              <CategoryBadge category={badgeChip.category} label={badgeChip.label} fontSize={9} />
+                            </Box>
+                          )}
                         </Box>
-                        <Typography variant="caption" sx={{ display: "block", mt: 1, fontWeight: 600 }}>{cat}</Typography>
+                        <Typography variant="caption" sx={{ display: "block", mt: 1, fontWeight: 600 }}>
+                          {base}{badge ? ` + ${badge}` : ""}
+                        </Typography>
                       </Paper>
-                    );
-                  });
+                      {badge && (
+                        <FormControlLabel sx={{ mt: 0.5, mx: 0 }}
+                          control={<Checkbox size="small" checked={showCategoryBadge}
+                            onChange={(e) => { setShowCategoryBadge(e.target.checked); applyCategoryStyle(cats, e.target.checked); }} />}
+                          label={<Typography variant="caption">Show "{badge}" badge</Typography>} />
+                      )}
+                    </>
+                  );
                 })()}
               </Box>
-            </>
-          )}
+            )}
+          </Box>
 
           {/* ---------- Label Examples gallery ---------- */}
           <Divider sx={{ my: 4 }} />
@@ -862,8 +998,21 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                           <Chip key={`l${i}`} size="small" label={`${label.icon || ""} ${label.name}`} sx={{ bgcolor: label.color, color: "#fff", fontWeight: 700 }} />
                         ))}
                         {categories.map((cat, i) => {
-                          const style = CATEGORY_STYLE[cat] || { bg: "#ccc", text: "#fff", emoji: "" };
-                          return <Chip key={`c${i}`} size="small" label={`${style.emoji}${cat}`} sx={{ bgcolor: style.bg, color: style.text, fontWeight: 700 }} />;
+                          const style = CATEGORY_STYLE[cat] || { bg: "#ccc", text: "#fff" };
+                          const badgeColor = cat === "Look Alike" || cat === "Sound Alike" ? "#000" : "#fff";
+                          return (
+                            <Box key={`c${i}`} sx={{
+                              display: "inline-flex", alignItems: "center", gap: "4px",
+                              padding: "4px 10px", whiteSpace: "nowrap", borderRadius: "6px",
+                              fontSize: "12px", fontWeight: "bold",
+                              backgroundColor: style.bg, color: badgeColor,
+                            }}>
+                              {cat}
+                              {cat === "High Alert" && <WarningAmberIcon sx={{ fontSize: 14 }} />}
+                              {cat === "Sound Alike" && <HearingIcon sx={{ fontSize: 14 }} />}
+                              {cat === "Look Alike" && <VisibilityIcon sx={{ fontSize: 14 }} />}
+                            </Box>
+                          );
                         })}
                       </Box>
                     )}
@@ -884,14 +1033,15 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                         </Tooltip>
                         <Tooltip title="Add to batch (suggested category style)">
                           <IconButton size="small" onClick={() => {
-                            const cat = categories[0] || "Normal";
-                            const style = CATEGORY_LABEL_STYLES[cat] || CATEGORY_LABEL_STYLES.Normal;
+                            const { base, badge } = resolveCategoryLook(categories);
+                            const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
+                            const badgeChipDef = badge ? CATEGORY_LABEL_STYLES[badge].chip : null;
                             setBatch((b) => [...b, {
                               id: `b${Date.now()}_${med.id}`,
                               labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
-                              fields: { name: true, expiry: false, code: false, description: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
+                              fields: { name: true, expiry: false, code: false, description: false, status: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
                               appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
-                              dims: { ...dims }, orientation, categoryChip: style.chip, previewName: med.name,
+                              dims: { ...dims }, orientation, categoryChip: showCategoryBadge ? badgeChipDef : null, badgeAvailable: badgeChipDef, previewName: med.name,
                             }]);
                           }} sx={{ bgcolor: "#F0FDF4", "&:hover": { bgcolor: "#DCFCE7" }, borderRadius: "8px" }}>
                             <Typography sx={{ fontWeight: 800, color: "#16A34A", fontSize: 14, lineHeight: 1 }}>+</Typography>
@@ -976,22 +1126,35 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         <Box className="no-print" sx={{
           position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 20,
           bgcolor: "#fff", borderTop: `2px solid ${BLUE}`, boxShadow: "0 -4px 16px rgba(0,0,0,0.1)",
-          px: 3, py: 1.5, display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap",
+          px: 3, py: 1.5, display: "flex", alignItems: "center", gap: 2,
+          maxHeight: 96, overflow: "hidden",
         }}>
           <Typography sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{batch.length} queued</Typography>
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", flex: 1, overflowX: "auto", py: 0.5 }}>
+          {/* Single scrollable row — never wraps to multiple lines, so a big batch
+              can't push this bar to grow and cover the screen. */}
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "nowrap", flex: 1, overflowX: "auto", overflowY: "hidden", py: 0.5 }}>
             {batch.map((item) => (
               <Chip key={item.id} label={item.previewName} onDelete={() => removeFromBatch(item.id)}
-                sx={{ bgcolor: item.appearance.bg, color: item.appearance.text, fontWeight: 700, border: "1px solid #e5e7eb" }} />
+                sx={{ bgcolor: item.appearance.bg, color: item.appearance.text, fontWeight: 700, border: "1px solid #e5e7eb", flexShrink: 0 }} />
             ))}
           </Box>
-          <Button size="small" onClick={() => setBatch([])} sx={{ textTransform: "none" }}>Clear</Button>
-          <Button variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}
-            sx={{ textTransform: "none", fontWeight: 700, borderRadius: "8px", bgcolor: BLUE, "&:hover": { bgcolor: "#1E3A8A" } }}>
+          <Button size="small" onClick={() => setBatch([])} sx={{ textTransform: "none", flexShrink: 0 }}>Clear</Button>
+          <Button variant="contained" startIcon={<PrintIcon />} onClick={() => setReviewOpen(true)}
+            sx={{ textTransform: "none", fontWeight: 700, borderRadius: "8px", bgcolor: BLUE, "&:hover": { bgcolor: "#1E3A8A" }, flexShrink: 0 }}>
             Finish & Print ({batch.length})
           </Button>
         </Box>
       )}
+
+      {/* ---------- Review & Print dialog ---------- */}
+      <ReviewPrintDialog
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        batch={batch}
+        setBatch={setBatch}
+        removeFromBatch={removeFromBatch}
+        onConfirmPrint={() => { setReviewOpen(false); handlePrint(); }}
+      />
 
       {/* ---------- Arrange on A4 dialog ---------- */}
       <ArrangeDialog
@@ -1008,27 +1171,150 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         logoDataUrl={logoDataUrl}
         logoPos={logoPos}
         logoSize={logoSize}
+        logoBg={logoBg}
         qrUrl={qrCustomUrl}
         qrSize={qrSize}
+        qrPos={qrPos}
         categoryChip={categoryChip}
         qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""}
       />
 
       {/* ---------- Hidden A4 print sheet (visible only when printing) ---------- */}
       <Box id="print-sheet">
-        {batch.length > 0
+        {!printReady ? null : batch.length > 0
           ? batch.map((item) => (
               <LabelCard key={item.id} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
-                dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize}
-                qrUrl={qrCustomUrl} qrSize={qrSize} categoryChip={item.categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
+                qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} categoryChip={item.categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
             ))
           : Array.from({ length: copies }).map((_, i) => (
               <LabelCard key={i} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
-                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrCustomUrl} qrSize={qrSize}
+                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos}
                 categoryChip={categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
             ))}
       </Box>
     </Container>
+  );
+}
+
+function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint }) {
+  const [page, setPage] = useState(0);
+  const rowsPerPage = 15;
+  useEffect(() => { if (open) setPage(0); }, [open]);
+
+  function toggleBarcode(id) {
+    setBatch((b) => b.map((it) => it.id === id ? { ...it, fields: { ...it.fields, barcode: !it.fields.barcode } } : it));
+  }
+  function toggleBadge(id) {
+    setBatch((b) => b.map((it) => it.id === id ? { ...it, categoryChip: it.categoryChip ? null : it.badgeAvailable || null } : it));
+  }
+  function bulkBarcode(on) {
+    setBatch((b) => b.map((it) => ({ ...it, fields: { ...it.fields, barcode: on } })));
+  }
+  function bulkBadge(on) {
+    setBatch((b) => b.map((it) => ({ ...it, categoryChip: on ? (it.badgeAvailable || null) : null })));
+  }
+
+  const pageItems = batch.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>
+        Review & Print — {batch.length} label{batch.length !== 1 ? "s" : ""}
+      </DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body2" sx={{ color: "#6b7280", mb: 2 }}>
+          Quick check before printing — this is exactly what will come out of the printer.
+          Adjust the barcode or badge for any label, or apply a setting to all of them at once.
+        </Typography>
+
+        <Box sx={{ display: "flex", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
+          <Button size="small" variant="outlined" onClick={() => bulkBarcode(true)} sx={{ textTransform: "none" }}>Barcode ON for all</Button>
+          <Button size="small" variant="outlined" onClick={() => bulkBarcode(false)} sx={{ textTransform: "none" }}>Barcode OFF for all</Button>
+          <Button size="small" variant="outlined" onClick={() => bulkBadge(true)} sx={{ textTransform: "none" }}>Badge ON for all</Button>
+          <Button size="small" variant="outlined" onClick={() => bulkBadge(false)} sx={{ textTransform: "none" }}>Badge OFF for all</Button>
+        </Box>
+
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "#f9fafb" } }}>
+                <TableCell>#</TableCell>
+                <TableCell>Preview</TableCell>
+                <TableCell>Medication</TableCell>
+                <TableCell align="center">Barcode</TableCell>
+                <TableCell align="center">Badge</TableCell>
+                <TableCell align="right"></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {pageItems.map((item, i) => (
+                <TableRow key={item.id} hover>
+                  <TableCell sx={{ color: "#9ca3af" }}>{page * rowsPerPage + i + 1}</TableCell>
+                  <TableCell>
+                    <Box sx={{
+                      width: 56, height: 32, bgcolor: item.appearance.bg, color: item.appearance.text,
+                      border: "2px solid #000", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 8, fontWeight: 700, position: "relative", overflow: "hidden", px: 0.3,
+                    }}>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.previewName}</span>
+                      {item.categoryChip && (
+                        <Box sx={{ position: "absolute", bottom: 1, right: 1, bgcolor: "#FFFF55", width: 6, height: 6, borderRadius: "50%" }} />
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{item.previewName}</TableCell>
+                  <TableCell align="center">
+                    <Tooltip title={item.fields.barcode ? "Barcode on — click to remove" : "No barcode — click to add"}>
+                      <Checkbox size="small" checked={!!item.fields.barcode} onChange={() => toggleBarcode(item.id)} />
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip title={!item.badgeAvailable ? "No secondary category for this medicine" : item.categoryChip ? "Badge on — click to remove" : "Badge off — click to add"}>
+                      <span>
+                        <Checkbox size="small" disabled={!item.badgeAvailable} checked={!!item.categoryChip} onChange={() => toggleBadge(item.id)} />
+                      </span>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="right">
+                    <IconButton size="small" onClick={() => removeFromBatch(item.id)}>
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        {batch.length > rowsPerPage && (
+          <TablePagination component="div" count={batch.length} page={page} onPageChange={(e, p) => setPage(p)}
+            rowsPerPage={rowsPerPage} rowsPerPageOptions={[rowsPerPage]} />
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} sx={{ textTransform: "none" }}>Back to editing</Button>
+        <Button variant="contained" startIcon={<PrintIcon />} disabled={batch.length === 0} onClick={onConfirmPrint}
+          sx={{ textTransform: "none", fontWeight: 700, borderRadius: "8px", bgcolor: BLUE, "&:hover": { bgcolor: "#1E3A8A" } }}>
+          Print All ({batch.length})
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// Small corner badge for Sound Alike / Look Alike — matches the Inventory
+// badge exactly: sharp corners, real icon (not emoji), not a pill.
+function CategoryBadge({ category, label, fontSize = 10 }) {
+  const Icon = category === "Sound Alike" ? HearingIcon : category === "Look Alike" ? VisibilityIcon : null;
+  return (
+    <Box sx={{
+      bgcolor: "#FFFF55", color: "#000", fontWeight: 700, fontSize: `${fontSize}px`,
+      borderRadius: "6px", px: 1, py: 0.3, display: "inline-flex", alignItems: "center", gap: 0.4,
+      WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
+    }}>
+      {label}
+      {Icon && <Icon sx={{ fontSize: fontSize + 2 }} />}
+    </Box>
   );
 }
 
@@ -1057,7 +1343,7 @@ function ScaledPreview({ dims, orientation, maxBox = 320, children }) {
   );
 }
 
-function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, qrUrl, qrSize, categoryChip, qrMessageId }) {
+function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChip, qrMessageId }) {
   const initW = orientation === "horizontal" ? dims.width : dims.height;
   const initH = orientation === "horizontal" ? dims.height : dims.width;
 
@@ -1142,7 +1428,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
           >
             <Box sx={{ width: box.w * PXPERMM, height: box.h * PXPERMM, pointerEvents: "none", transform: `scale(${scale})`, transformOrigin: "top left" }}>
               <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance}
-                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} qrUrl={qrUrl} qrSize={qrSize} categoryChip={categoryChip} qrMessageId={qrMessageId} />
+                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChip={categoryChip} qrMessageId={qrMessageId} />
             </Box>
             <Box
               onMouseDown={startResize}
@@ -1168,7 +1454,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
   );
 }
 
-function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, qrUrl, qrSize, categoryChip, qrMessageId }) {
+function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChip, qrMessageId }) {
   const Icon = template.icon;
   const width = orientation === "horizontal" ? dims.width : dims.height;
   const height = orientation === "horizontal" ? dims.height : dims.width;
@@ -1183,8 +1469,10 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         color: appearance.text,
         WebkitPrintColorAdjust: "exact",
         printColorAdjust: "exact",
-        border: printMode ? "1px dashed #cbd5e1" : "1px solid #e5e7eb",
-        borderRadius: "6px",
+        border: "2px solid #000",
+        outline: printMode ? "1px dashed #cbd5e1" : "none",
+        outlineOffset: printMode ? "2px" : 0,
+        borderRadius: 0,
         boxShadow: printMode ? "none" : "0 1px 4px rgba(0,0,0,0.08)",
         display: "flex",
         flexDirection: "column",
@@ -1194,36 +1482,34 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         px: 2, py: 1.2, gap: 0.5,
         overflow: "hidden",
         position: "relative",
-        fontFamily: "Roboto, Arial, sans-serif",
+        fontFamily: "Georgia, 'Times New Roman', Times, serif",
         boxSizing: "border-box",
       }}
     >
       {fields.logo && logoDataUrl && (
         <Box sx={{
           position: "absolute",
-          left: `${(logoPos?.x ?? 15)}%`, top: `${(logoPos?.y ?? 85)}%`,
+          left: `${(logoPos?.x ?? 82)}%`, top: `${(logoPos?.y ?? 80)}%`,
           transform: "translate(-50%, -50%)",
+          bgcolor: logoBg ? "#fff" : "transparent",
+          px: logoBg ? 0.6 : 0, py: logoBg ? 0.3 : 0, lineHeight: 0,
+          display: "flex", alignItems: "center",
         }}>
-          <img src={logoDataUrl} alt="logo" style={{ height: mmToPx(Math.min(width, height)) * ((logoSize ?? 28) / 100), maxWidth: mmToPx(width) * 0.5, objectFit: "contain" }} />
+          <img src={logoDataUrl} alt="logo" style={{ height: mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100), maxWidth: mmToPx(width) * 0.5, objectFit: "contain" }} />
         </Box>
       )}
       {categoryChip && (
-        <Box sx={{
-          position: "absolute", bottom: 4,
-          left: (logoPos?.x ?? 15) > 50 ? 4 : "auto",
-          right: (logoPos?.x ?? 15) > 50 ? "auto" : 4,
-        }}>
-          <Box sx={{
-            bgcolor: "#FFD54F", color: "#000", fontWeight: 700, fontSize: "10px",
-            borderRadius: "10px", px: 1, py: 0.3, display: "flex", alignItems: "center", gap: 0.4,
-            WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
-          }}>
-            <span>{categoryChip.icon}</span> {categoryChip.label}
-          </Box>
+        <Box sx={{ position: "absolute", top: 4, left: 4 }}>
+          <CategoryBadge category={categoryChip.category} label={categoryChip.label} />
         </Box>
       )}
       {fields.qr && (qrUrl?.trim() || labelText.code || labelText.name) && (
-        <Box sx={{ position: "absolute", bottom: 4, right: 4, bgcolor: "#fff", p: "3px", borderRadius: "3px", lineHeight: 0 }}>
+        <Box sx={{
+          position: "absolute",
+          left: `${(qrPos?.x ?? 15)}%`, top: `${(qrPos?.y ?? 88)}%`,
+          transform: "translate(-50%, -50%)",
+          bgcolor: "#fff", p: "3px", borderRadius: "3px", lineHeight: 0,
+        }}>
           <QRCodeSVG
             value={qrUrl?.trim()
               ? qrUrl.trim()
@@ -1237,11 +1523,13 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
       <Box sx={{
         fontWeight: appearance.bold ? 800 : 600,
         fontSize: `${appearance.fontSize + (fields.name ? 2 : 4)}px`,
-        whiteSpace: "pre-line", lineHeight: 1.25,
+        lineHeight: 1.25,
       }}>
-        {mainTitle}
+        {(fields.name && labelText.name ? splitMedicationText(labelText.name) : mainTitle.split("\n")).map((line, i) => (
+          <Box key={i}>{line}</Box>
+        ))}
       </Box>
-      {fields.name && labelText.status && (
+      {fields.status && labelText.status && (
         <Box sx={{ color: appearance.accent, fontWeight: 700, fontSize: `${appearance.fontSize}px` }}>
           {labelText.status.toUpperCase()}
         </Box>
@@ -1267,7 +1555,12 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         </Box>
       )}
       {fields.barcode && (labelText.code || labelText.name) && (
-        <Box sx={{ width: "100%", display: "flex", justifyContent: "center", lineHeight: 0, my: 0.3 }}>
+        <Box sx={{
+          width: "100%", display: "flex", justifyContent: "center", lineHeight: 0, my: 0.3,
+          // Reserve space on the logo's side so the barcode never prints under it.
+          pr: fields.logo && logoDataUrl && (logoPos?.x ?? 82) > 50 ? `${mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100) * 1.4}px` : 0,
+          pl: fields.logo && logoDataUrl && (logoPos?.x ?? 82) <= 50 ? `${mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100) * 1.4}px` : 0,
+        }}>
           <Barcode
             value={labelText.code || labelText.name}
             format="CODE128"

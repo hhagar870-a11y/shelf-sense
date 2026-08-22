@@ -63,26 +63,63 @@ async function fetchMedicinesFromFirestore() {
   return list;
 }
 
+// يبني نسخة موحّدة (id ثابت + ترتيب حسب الموقع الحالي) من قائمة الأدوية،
+// وبنفس الوقت خارطة "id -> نص JSON" لمحتوى كل دواء — نستخدمها كمرجع
+// لمقارنة أي تغيير فعلي قبل الكتابة، ولتأسيس lastSyncedContentRef فور
+// التحميل من الكاش/فايرستور عشان أول تعديل بسيط ما يعيد كتابة كل شي
+function buildMedicineSyncSnapshot(list) {
+  const withIds = list.map((m, index) => ({
+    ...m,
+    id: m.id !== undefined && m.id !== null ? String(m.id) : crypto.randomUUID(),
+    order: index,
+  }));
+  const contentMap = new Map();
+  withIds.forEach((m) => contentMap.set(m.id, JSON.stringify(m)));
+  return { withIds, contentMap };
+}
+
 // يحفظ/يحدّث كل دواء بمستند خاص فيه (بنفس الـ id المستخدم بالتطبيق أصلاً)،
 // ويحذف أي مستند قديم ما عاد موجود بالمصفوفة الجديدة (يعني انحذف أو اندمج
 // بدواء ثاني). نستخدم هذي الدالة الموحّدة بدل كل استدعاء localStorage.setItem
 // عشان سلوك الحفظ يبقى مطابق تمامًا للي كان قبل، بدون ما نلمس أي منطق ثاني
-async function syncMedicinesToFirestore(newMedicines, previousIds) {
-  const withIds = newMedicines.map((m, index) => ({
-    ...m,
-    id: m.id !== undefined && m.id !== null ? String(m.id) : crypto.randomUUID(),
-    order: index, // نحفظ رقم الترتيب الحالي بالمصفوفة عشان يرجع بنفس الترتيب لما نجيبه
-  }));
+//
+// تحسين أداء: قبل كانت هذي الدالة تعيد كتابة (setDoc) كل دواء موجود بالقائمة
+// في كل مرة يتغير فيها أي شيء بسيط — حتى لو دواء واحد بس انحذف أو انعدّل،
+// كانت تكتب مئات المستندات الثابتة من جديد فوق بعض. هذا هو السبب الحقيقي
+// وراء بطء الحذف/التراجع/تفريغ السلة: كل عملية كانت تنتظر Promise.all ضخم
+// لمئات الكتابات المتزامنة، وأحيانًا لو صار تنقل بين الصفحات قبل ما تخلص،
+// كان يرجع يجيب نسخة فايرستور القديمة (لأن الحذف الفعلي بعده يعالج بالطابور).
+// الحل: نقارن محتوى كل دواء بآخر نسخة كتبناها فعليًا (lastSyncedContent)،
+// ونكتب فقط اللي تغيّر محتواه أو جديد — الباقي ما نلمسه أبدًا
+async function syncMedicinesToFirestore(newMedicines, previousIds, lastSyncedContent) {
+  const { withIds, contentMap } = buildMedicineSyncSnapshot(newMedicines);
 
   const newIds = new Set(withIds.map((m) => m.id));
   const idsToDelete = [...(previousIds || [])].filter((id) => !newIds.has(id));
 
+  const writes = [];
+  withIds.forEach((m) => {
+    const serialized = contentMap.get(m.id);
+    if (!lastSyncedContent || lastSyncedContent.get(m.id) !== serialized) {
+      writes.push(setDoc(doc(db, MEDICINES_COLLECTION, m.id), m));
+    }
+  });
+
   await Promise.all([
-    ...withIds.map((m) => setDoc(doc(db, MEDICINES_COLLECTION, m.id), m)),
+    ...writes,
     ...idsToDelete.map((id) => deleteDoc(doc(db, MEDICINES_COLLECTION, id))),
   ]);
 
-  return { ids: newIds, medicines: withIds };
+  return { ids: newIds, medicines: withIds, contentMap };
+}
+
+// يحذف مستند دواء واحد فورًا من فايرستور — نستخدمها مباشرة وقت الحذف بدل
+// ما ننتظر المزامنة العامة (اللي صارت الآن مؤجّلة/debounced، فممكن تتأخر
+// نص ثانية أو أكثر). هذا يضمن إن الدواء المحذوف يختفي فعليًا من السيرفر
+// فورًا، حتى لو المستخدم بسرعة سكّر الصفحة أو رجعها قبل ما تخلص المزامنة
+// العامة — نفس السبب اللي كان يخلي أدوية محذوفة "ترجع" بعد شوي
+async function deleteMedicineDocImmediately(id) {
+  await deleteDoc(doc(db, MEDICINES_COLLECTION, String(id)));
 }
 
 // يمسح كل الأدوية من فايرستور (يستخدم بدل localStorage.removeItem)
@@ -174,6 +211,69 @@ function parseQuantityNumber(value) {
   return match ? parseFloat(match[0]) : 0;
 }
 
+// يبني قائمة أرقام الصفحات اللي تظهر بشريط الترقيم الاحترافي (زي "1 2 3 ... 29")
+// — يعرض دايمًا أول وآخر صفحة، وصفحة أو صفحتين حوالين الصفحة الحالية،
+// ويحط "..." بمكان أي فجوة أكبر من صفحة وحدة بينهم
+function getPaginationPageNumbers(currentPage, totalPages) {
+  const delta = 1;
+  const range = [];
+  const withDots = [];
+  let last = null;
+
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= currentPage - delta && i <= currentPage + delta)) {
+      range.push(i);
+    }
+  }
+
+  range.forEach((i) => {
+    if (last !== null) {
+      if (i - last === 2) {
+        withDots.push(last + 1);
+      } else if (i - last > 1) {
+        withDots.push("…");
+      }
+    }
+    withDots.push(i);
+    last = i;
+  });
+
+  return withDots;
+}
+
+// شريط الترقيم يحسب "من/إلى/آخر صفحة" بناءً على عدد الأدوية الحقيقية بس
+// (يستثني صفوف عناوين الأقسام لأنها مو أدوية فعلية). المشكلة كانت إن
+// عملية التقطيع الفعلية بالجدول كانت تسحب ٥٠ عنصر من المصفوفة الكاملة
+// (اللي فيها صفوف الأقسام مندمجة) — يعني لو وقع صف قسم أو أكثر داخل
+// نطاق الصفحة، تاخذ مكان دواء حقيقي وتقل الأدوية المعروضة فعليًا عن ٥٠،
+// وبتراكم هالفرق البسيط عبر الصفحات، آخر صفحة (اللي فيها عدد أقل من
+// rowsPerPage أصلاً) توصل لمحتوى ناقص أو غير متطابق مع رقم الصفحة المحسوب.
+// هذي الدالة تقطّع بالاعتماد على عدّاد "أدوية حقيقية" بس، وتضيف صف القسم
+// معها لو وقع بنفس نطاق الصفحة — فرقم الصفحة يطابق تمامًا عدد الأدوية
+// الحقيقية المعروضة، بغض النظر عن كم صف قسم موجود بينهم
+function getMedicinePageSlice(list, page, rowsPerPage) {
+  const startIdx = page * rowsPerPage;
+  const endIdx = startIdx + rowsPerPage;
+  const result = [];
+  let realCount = 0;
+
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    const isRealMedicine = !item.isSection;
+
+    if (realCount >= startIdx && realCount < endIdx) {
+      result.push(item);
+    }
+
+    if (isRealMedicine) {
+      realCount++;
+      if (realCount >= endIdx) break;
+    }
+  }
+
+  return result;
+}
+
 // يقبل أي صيغة تاريخ يكتبها المستخدم بحرية (يوم كامل أو شهر وسنة بس)
 // ويحولها لنفس صيغة "YYYY-MM-DD" اللي نستخدمها بالتطبيق، بنفس منطق
 // استيراد الإكسل بالضبط: لو ماكتب يوم، ياخذ آخر يوم بالشهر تلقائيًا
@@ -243,6 +343,38 @@ const ministryDatabase = ministryMedicines.reduce((acc, item) => {
   if (code) acc[code] = desc;
   return acc;
 }, {});
+
+// فهرس عكسي (اسم الدواء بأحرف صغيرة -> {code, name}) نستخدمه لمّا يكتب
+// المستخدم الاسم مباشرة ونبي نقترح له كود النيبكو المطابق، وقائمة
+// [code, name] جاهزة للبحث بالـ "يبدأ بـ" أثناء كتابة الكود تدريجيًا
+const ministryNameToCode = {};
+Object.entries(ministryDatabase).forEach(([code, name]) => {
+  const key = String(name || "").trim().toLowerCase();
+  if (key && !(key in ministryNameToCode)) {
+    ministryNameToCode[key] = { code, name };
+  }
+});
+const ministryCodeEntries = Object.entries(ministryDatabase);
+
+// يقترح دواء واحد فقط بناءً على أول أرقام كتبها المستخدم من الكود (يبدأ
+// بها الكود، مو موجودة بأي مكان منه — عشان ما نرجع لنفس مشكلة التخمين
+// العشوائي). يرجع null لو الكتابة لسا قصيرة جدًا (أقل من ٤ أرقام) عشان
+// ما نطلع اقتراح ضعيف الثقة بأول رقم أو رقمين
+function findCodeSuggestionByPartialCode(partial) {
+  if (!partial || partial.length < 4) return null;
+  const match = ministryCodeEntries.find(([code]) => code.startsWith(partial));
+  return match ? { code: match[0], name: match[1] } : null;
+}
+
+// نفس الفكرة بالاتجاه المعاكس: يقترح كود بناءً على أول أحرف كتبها المستخدم
+// من اسم الدواء
+function findNameSuggestionByPartialName(partial) {
+  const key = String(partial || "").trim().toLowerCase();
+  if (!key || key.length < 4) return null;
+  const matchKey = Object.keys(ministryNameToCode).find((name) => name.startsWith(key));
+  return matchKey ? ministryNameToCode[matchKey] : null;
+}
+
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -300,6 +432,12 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import CategoryIcon from "@mui/icons-material/Category";
+import KeyboardDoubleArrowDownIcon from "@mui/icons-material/KeyboardDoubleArrowDown";
+import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
+import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import KeyboardTabIcon from "@mui/icons-material/KeyboardTab";
 import { useNavigate, useLocation } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { importExcel } from "../utils/excelImporter";
@@ -437,6 +575,13 @@ const [medicinesLoading, setMedicinesLoading] = useState(true);
 // نتتبع بيها كل الـ id الموجودة حاليًا بفايرستور، عشان نعرف وقت الحفظ
 // أي مستند لازم نحذفه (صار محذوف أو مدموج) وأينا نضيف/نحدّث بس
 const knownMedicineIdsRef = useRef(new Set());
+// آخر محتوى فعليًا مكتوب بفايرستور لكل دواء (id -> نص JSON) — نقارن عليه
+// قبل أي كتابة جديدة عشان ما نعيد كتابة مستندات ما تغيّرت أبدًا
+const lastSyncedContentRef = useRef(new Map());
+// مؤقّت تأجيل الحفظ: لمن يصير أكثر من تغيير سريع متتالي (مثل حذف دوائين
+// بسرعة)، ننتظر شوي ونجمعهم بمزامنة وحدة بدل ما نطلق مزامنة ضخمة منفصلة
+// لكل تغيير — يقلل الضغط على فايرستور بشكل كبير وبالتالي بطء العمليات
+const persistDebounceRef = useRef(null);
 // لو true، معناه آخر setMedicines() كان تحميل بيانات (من الكاش أو من فايرستور
 // مباشرة) مو تعديل حقيقي من المستخدم — فما نبيه نعيد كتابته فوق فايرستور
 // (كان سبب مشكلة رجوع البيانات القديمة: صفحة ثانية زي موصول تعدّل مستند
@@ -449,18 +594,25 @@ const skipNextPersistRef = useRef(false);
 // منطق ثاني بالتطبيق — نفس مكان الاستدعاء، نفس المعطى، بس التخزين يتغيّر
 const persistMedicines = (list) => {
   medicinesCache = list; // نحدّث الكاش فورًا (محليًا) عشان أي رجوع للصفحة يشوف آخر حالة
-  syncMedicinesToFirestore(list, knownMedicineIdsRef.current)
-    .then(({ ids }) => {
-      knownMedicineIdsRef.current = ids;
-    })
-    .catch((err) => console.error("فشل حفظ الأدوية بـ Firestore:", err));
+
+  if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+  persistDebounceRef.current = setTimeout(() => {
+    syncMedicinesToFirestore(list, knownMedicineIdsRef.current, lastSyncedContentRef.current)
+      .then(({ ids, contentMap }) => {
+        knownMedicineIdsRef.current = ids;
+        lastSyncedContentRef.current = contentMap;
+      })
+      .catch((err) => console.error("فشل حفظ الأدوية بـ Firestore:", err));
+  }, 400);
 };
 
 useEffect(() => {
   // لو عندنا نسخة محفوظة بالذاكرة من قبل (رجعنا لنفس التبويب)، نعرضها فورًا
   // بدون شاشة تحميل، ونحدّثها بهدوء بالخلفية بدل ما نوقف الواجهة على الفارغ
   if (medicinesCache !== null) {
+    const { contentMap } = buildMedicineSyncSnapshot(medicinesCache);
     knownMedicineIdsRef.current = new Set(medicinesCache.map((m) => m.id));
+    lastSyncedContentRef.current = contentMap;
     skipNextPersistRef.current = true; // تحميل من الكاش، مو تعديل — لا نحفظه
     setMedicines(medicinesCache);
     setSections(sectionsCache || []);
@@ -474,7 +626,9 @@ useEffect(() => {
         fetchSectionsFromFirestore(),
       ]);
 
+      const { contentMap } = buildMedicineSyncSnapshot(loadedMedicines);
       knownMedicineIdsRef.current = new Set(loadedMedicines.map((m) => m.id));
+      lastSyncedContentRef.current = contentMap;
       skipNextPersistRef.current = true; // تحميل طازج من فايرستور، مو تعديل — لا نحفظه
       setMedicines(loadedMedicines);
       setSections(loadedSections);
@@ -511,9 +665,23 @@ useEffect(() => {
 
 const [editIndex, setEditIndex] = useState(null);
 const [search, setSearch] = useState("");
+
+// لمن يتغيّر البحث أو أي فلتر (تصنيف/حالة)، نرجع لأول صفحة تلقائيًا —
+// وإلا لو كنت واقف بآخر صفحة (مثلاً صفحة ١٢) وبحثت عن دواء، النتيجة
+// المطابقة تكون بأول الصفحات المفلترة الجديدة، لكن رقم الصفحة يفضل
+// عالق على ١٢ فيطلع الجدول فاضي وكأن ماكو نتيجة، مع إن النتيجة موجودة
+// فعلاً بس مو بنفس رقم الصفحة القديم
+useEffect(() => {
+  setPage(0);
+}, [search, selectedCategory, selectedStatus]);
 // true لو المستخدم كتب كود نيبكو وما انطابق مع أي اسم بقاعدة بيانات الوزارة
 const [codeNotRecognized, setCodeNotRecognized] = useState(false);
 const [codeTooLong, setCodeTooLong] = useState(false);
+// اقتراح شفاف (مو تعبئة إجبارية) يظهر وإحنا لسا بنص الكتابة — إما اقتراح
+// اسم بناءً على أول أرقام الكود، أو اقتراح كود بناءً على أول أحرف الاسم.
+// المستخدم يقبله بضغطة Tab أو Enter، وإلا يفضل مجرد اقتراح بدون أي تأثير
+const [codeSuggestion, setCodeSuggestion] = useState(null);
+const [nameSuggestion, setNameSuggestion] = useState(null);
 
 // سلة المهملات
 const [trashItems, setTrashItems] = useState([]);
@@ -527,54 +695,128 @@ const [deletingIds, setDeletingIds] = useState(() => new Set());
 // دالة جلب الاسم تلقائياً وسريعة جداً عند كتابة الكود يدوياً
 const NUPCO_CODE_LENGTH = 13;
 
+// استثناء: بعض أكواد النيبكو تشترك بين صنفين مختلفين تمامًا (نفس الكود
+// بقاعدة بيانات الوزارة لكن يمثل دوائين منفصلين، مثل "المذيب" و"اللقاح
+// نفسه"، أو اسمين مختلفين لنفس المستحضر الغذائي). لمن يكتب المستخدم أحد
+// هذي الأكواد، نعرض له خانتين اسم دواء بدل وحدة، وبمجرد ما يضغط "إضافة"
+// ينحفظون كصنفين منفصلين تمامًا (بكميات وتواريخ انتهاء منفصلة كل وحدة)
+const SHARED_CODE_EXCEPTIONS = {
+  "5013170108400": ["NUTRITION MODULAR LIQ MCT OIL", "MODULAR LIQUID MEDIUM CHAIN TRIGLYCERIDE"],
+  "5120160000200": ["DILUENT FOR BCG VACCINE", "BCG VACCINE 0.25MG INJECTION"],
+  "5120160000700": ["PLASTIC DROPPER FOR ORAL POLIO", "POLIOMYELITIS SEROTYPE 1 AND 3 VACCINE ORAL"],
+};
+
+const emptySecondMedicine = () => ({
+  name: "",
+  quantity: "",
+  reorderLevel: "20",
+  expiryDates: [""],
+});
+
+// true فقط لمن الكود المكتوب حاليًا موجود بقائمة الاستثناء أعلاه — يتحكم
+// بإظهار خانة الدواء الثانية بنموذج الإضافة (وضع "التحرير" ما يستخدمها،
+// لأنه يخص تعديل صنف واحد موجود أصلاً، مو إضافة جديدة)
+const [isDualCodeEntry, setIsDualCodeEntry] = useState(false);
+const [secondMedicine, setSecondMedicine] = useState(emptySecondMedicine());
+const hiddenDateInputRefs2 = useRef([]);
+
 const handleCodeChange = (e) => {
   const enteredCode = e.target.value.trim();
   setNewMedicine((prev) => ({ ...prev, code: enteredCode }));
+  setCodeSuggestion(null);
 
   if (!enteredCode) {
     setCodeNotRecognized(false);
     setCodeTooLong(false);
+    setIsDualCodeEntry(false);
     return;
   }
 
   if (enteredCode.length > NUPCO_CODE_LENGTH) {
     setCodeTooLong(true);
     setCodeNotRecognized(false);
+    setIsDualCodeEntry(false);
     return;
   }
   setCodeTooLong(false);
 
-  // البحث المباشر في قاعدة بيانات الوزارة (ministryDatabase)
-  let foundName = "";
-  if (ministryDatabase) {
-    // 1. البحث بالمطابقة التامة للكود
-    if (ministryDatabase[enteredCode]) {
-      foundName = ministryDatabase[enteredCode];
-    } else {
-      // 2. البحث المرن (في حال وجود فوارق بسيطة مثل النقاط أو الأصفار)
-      const cleanEntered = enteredCode.split(".")[0];
-      const matchedKey = Object.keys(ministryDatabase).find(
-        (key) => key.split(".")[0] === cleanEntered || key.includes(cleanEntered)
-      );
-      if (matchedKey) {
-        foundName = ministryDatabase[matchedKey];
-      }
-    }
+  // نتحقق أولاً هل هذا الكود من الأكواد المشتركة الاستثنائية — لو نعم
+  // نعبّي خانتي الاسم مباشرة وننهي هنا، بدون المرور بمنطق قاعدة بيانات
+  // الوزارة العادي (اللي يفترض اسم واحد لكل كود)
+  const exceptionNames = editIndex === null ? SHARED_CODE_EXCEPTIONS[enteredCode] : null;
+  if (exceptionNames) {
+    setNewMedicine((prev) => ({ ...prev, code: enteredCode, name: exceptionNames[0] }));
+    setSecondMedicine((prev) => ({ ...prev, name: exceptionNames[1] }));
+    setIsDualCodeEntry(true);
+    setCodeNotRecognized(false);
+    return;
+  }
+  setIsDualCodeEntry(false);
+
+  // مطابقة تامة فقط — هذي وحدها آمنة تعبي خانة الاسم تلقائيًا وفورًا، بغض
+  // النظر عن طول الكود لين الآن، لأنها مطابقة دقيقة ١٠٠٪؜ مو تخمين
+  if (ministryDatabase[enteredCode]) {
+    setNewMedicine((prev) => ({ ...prev, code: enteredCode, name: ministryDatabase[enteredCode] }));
+    setCodeNotRecognized(false);
+    return;
   }
 
-  // تحديث حقل الاسم فوراً إذا تم العثور عليه
-  if (foundName) {
-    setNewMedicine((prev) => ({
-      ...prev,
-      code: enteredCode,
-      name: foundName,
-    }));
+  // لسا ما وصل الطول الكامل (١٣ رقم) — نعرض اقتراح شفاف تحت الخانة بس،
+  // وما نلمس خانة الاسم ولا نطلع تحذير "غير موجود" لين يخلص من الكتابة.
+  // هذا هو تحديدًا اللي كان يسبب قفز/رجفة اسم دواء غلط وهو لسا بأول
+  // رقمين-ثلاثة من الكود (كان فيه بحث "يحتوي على" بأي مكان بالكود بدل
+  // "يبدأ بـ"، فيطابق كود عشوائي تمامًا مالها علاقة بالي ينوي كتابته)
+  if (enteredCode.length < NUPCO_CODE_LENGTH) {
+    setCodeNotRecognized(false);
+    setCodeSuggestion(findCodeSuggestionByPartialCode(enteredCode));
+    return;
+  }
+
+  // وصل الطول الكامل وما فيه مطابقة تامة — نجرب تنظيف بسيط (شيل أي شي بعد
+  // نقطة) بمطابقة تامة برضو، مو بحث "يحتوي على" عشوائي
+  const cleanEntered = enteredCode.split(".")[0];
+  const matchedKey = Object.keys(ministryDatabase).find((key) => key.split(".")[0] === cleanEntered);
+  if (matchedKey) {
+    setNewMedicine((prev) => ({ ...prev, code: enteredCode, name: ministryDatabase[matchedKey] }));
     setCodeNotRecognized(false);
   } else {
     // الكود مو موجود بقاعدة بيانات الوزارة — إما خطأ كتابة أو صنف جديد لسا ما انضاف
     // نفضّي حقل الاسم عشان ما يفضل اسم قديم من كود سابق كان متطابق
     setNewMedicine((prev) => ({ ...prev, code: enteredCode, name: "" }));
     setCodeNotRecognized(true);
+  }
+};
+
+// لمن يكون فيه اقتراح شفاف (كود أو اسم) ظاهر، ضغطة Tab أو Enter تقبله
+// وتعبي الخانتين مباشرة — بدون ما تقفل الديالوج أو تعمل أي حفظ فعلي
+const handleCodeFieldKeyDown = (e) => {
+  if ((e.key === "Tab" || e.key === "Enter") && codeSuggestion && newMedicine.code !== codeSuggestion.code) {
+    e.preventDefault();
+    setNewMedicine((prev) => ({ ...prev, code: codeSuggestion.code, name: codeSuggestion.name }));
+    setCodeSuggestion(null);
+    setCodeNotRecognized(false);
+    setCodeTooLong(false);
+  }
+};
+
+const handleNameFieldChange = (e) => {
+  const value = e.target.value;
+  setNewMedicine((prev) => ({ ...prev, name: value }));
+
+  // اقتراح الكود من الاسم بس لمن خانة الكود لسا فاضية — لو المستخدم فعلاً
+  // مسوي كود مخصص أو لسا يكتبه، ما نتدخل
+  if (!newMedicine.code) {
+    setNameSuggestion(findNameSuggestionByPartialName(value));
+  } else {
+    setNameSuggestion(null);
+  }
+};
+
+const handleNameFieldKeyDown = (e) => {
+  if ((e.key === "Tab" || e.key === "Enter") && nameSuggestion && !newMedicine.code) {
+    e.preventDefault();
+    setNewMedicine((prev) => ({ ...prev, code: nameSuggestion.code, name: nameSuggestion.name }));
+    setNameSuggestion(null);
   }
 };
 
@@ -652,6 +894,48 @@ const handleLabelSave = () => {
 };
   setMedicines(updatedMedicines);
   setEditIndex(null);
+} else if (isDualCodeEntry) {
+  // هذا الكود من الأكواد المشتركة الاستثنائية: نحفظ الصنفين كسجلين
+  // منفصلين تمامًا بنفس الكود، كل وحدة بكميتها وتواريخ انتهائها الخاصة
+  if (!secondMedicine.name || !secondMedicine.quantity) {
+    alert("Please fill in the name and quantity for the second item sharing this code");
+    return;
+  }
+  const secondExpiryDates = secondMedicine.expiryDates.map((d) => parseFlexibleDate(d));
+
+  const updatedMedicines = [
+    ...medicines,
+    {
+      ...newMedicine,
+      id: crypto.randomUUID(),
+      isSection: false,
+      expiry: newMedicine.expiryDates[0] || "",
+      expiryDates: newMedicine.expiryDates.filter((d) => d),
+      quantities: [newMedicine.quantity],
+      categories: getDrugCategories(newMedicine.name, newMedicine.code),
+      labels: [],
+      otherNames: [newMedicine.name],
+      dateAdded: new Date().toISOString(),
+    },
+    {
+      name: secondMedicine.name,
+      code: newMedicine.code,
+      quantity: secondMedicine.quantity,
+      reorderLevel: secondMedicine.reorderLevel || "20",
+      id: crypto.randomUUID(),
+      isSection: false,
+      expiry: secondExpiryDates[0] || "",
+      expiryDates: secondExpiryDates.filter((d) => d),
+      quantities: [secondMedicine.quantity],
+      categories: getDrugCategories(secondMedicine.name, newMedicine.code),
+      labels: [],
+      otherNames: [secondMedicine.name],
+      dateAdded: new Date().toISOString(),
+    },
+  ];
+  setMedicines(updatedMedicines);
+  setIsDualCodeEntry(false);
+  setSecondMedicine(emptySecondMedicine());
 } else {
   // التحقق من تكرار الدواء: بالكود لو متوفر عند الاثنين، أو بالاسم لو الاثنين بدون كود
   const inputCode = String(newMedicine.code || "").trim();
@@ -723,6 +1007,10 @@ const handleLabelSave = () => {
     setOpen(false);
     setEditIndex(null);
     setCodeNotRecognized(false);
+    setIsDualCodeEntry(false);
+    setSecondMedicine(emptySecondMedicine());
+    setCodeSuggestion(null);
+    setNameSuggestion(null);
   };
 
   // دالة تصحيح وقراءة التواريخ بدقة تامة (تحترم اليوم المحدد ولا تغيره إذا وُجد)
@@ -1025,13 +1313,26 @@ const handleDelete = async (id) => {
  setMedicines(updatedMedicines);
 
  // ننقله فورًا لسلة المهملات (بدل الانتظار ٥ ثواني) عشان ما تصير مشكلة
- // لو المستخدم سكّر الصفحة بسرعة — الزر "تراجع" يرجعه فورًا من السلة
+ // لو المستخدم سكّر الصفحة بسرعة — الزر "تراجع" يرجعه فورًا من السلة.
+ // وبنفس الوقت نحذف مستنده من مجموعة medicines مباشرة (بدل ما ننتظر
+ // المزامنة العامة المؤجّلة) — هذا يضمن اختفاءه من فايرستور فعليًا خلال
+ // أجزاء من الثانية، ويمنع رجوعه لو المستخدم رجع/حدّث الصفحة بسرعة قبل
+ // ما تخلص المزامنة العامة (اللي تصير بعد نص ثانية وممكن تشمل مئات الأدوية)
  try {
-   await setDoc(doc(db, TRASH_COLLECTION, String(medicineToDelete.id)), {
-     ...medicineToDelete,
-     deletedAt: Date.now(),
-   });
+   await Promise.all([
+     setDoc(doc(db, TRASH_COLLECTION, String(medicineToDelete.id)), {
+       ...medicineToDelete,
+       deletedAt: Date.now(),
+     }),
+     deleteMedicineDocImmediately(medicineToDelete.id),
+   ]);
    setTrashItems((prev) => [...prev, { ...medicineToDelete, deletedAt: Date.now() }]);
+   // نحدّث المرجعين محليًا فورًا عشان المزامنة العامة اللي بتصير بعد شوي
+   // ما تحاول تحذفه مرة ثانية أو تعتبره "لسا موجود" بالخطأ
+   knownMedicineIdsRef.current = new Set(
+     [...knownMedicineIdsRef.current].filter((mid) => mid !== String(medicineToDelete.id))
+   );
+   lastSyncedContentRef.current.delete(String(medicineToDelete.id));
  } catch (err) {
    console.error("فشل نقل الدواء لسلة المهملات:", err);
  } finally {
@@ -1060,8 +1361,15 @@ const handleUndoDelete = async () => {
   setMedicines(restored);
 
   try {
-    await deleteDoc(doc(db, TRASH_COLLECTION, String(medicine.id)));
+    // نعيد كتابة مستنده مباشرة بمجموعة medicines فورًا (بدل الانتظار على
+    // المزامنة العامة المؤجّلة) عشان التراجع يصير فوري وموثوق دائمًا
+    await Promise.all([
+      setDoc(doc(db, MEDICINES_COLLECTION, String(medicine.id)), medicine),
+      deleteDoc(doc(db, TRASH_COLLECTION, String(medicine.id))),
+    ]);
     setTrashItems((prev) => prev.filter((item) => item.id !== medicine.id));
+    knownMedicineIdsRef.current = new Set([...knownMedicineIdsRef.current, String(medicine.id)]);
+    lastSyncedContentRef.current.set(String(medicine.id), JSON.stringify(medicine));
   } catch (err) {
     console.error("فشل التراجع عن الحذف:", err);
   }
@@ -1075,6 +1383,8 @@ const handleRestoreFromTrash = async (item) => {
     await restoreMedicineFromTrash(item);
     setTrashItems((prev) => prev.filter((t) => t.id !== item.id));
     setMedicines((prev) => [...prev, item]);
+    knownMedicineIdsRef.current = new Set([...knownMedicineIdsRef.current, String(item.id)]);
+    lastSyncedContentRef.current.set(String(item.id), JSON.stringify(item));
   } catch (err) {
     console.error("فشل استرجاع الدواء من سلة المهملات:", err);
   }
@@ -1371,22 +1681,27 @@ const medicineLineNumbers = useMemo(() => {
 // إلا لما تتغير القائمة أو مصطلح البحث أو الفلاتر فعليًا، مو مع كل ضغطة زر
 // بالواجهة (زي فتح نافذة التصدير) اللي كانت تسبب تأخير ملحوظ بمخزون كبير
 const filteredMedicines = useMemo(() => {
-  return medicines.filter((medicine) => {
-    if (medicine.isSection) return true;
+  const searchTerm = search ? search.trim().toLowerCase() : "";
+  const isFiltering = Boolean(searchTerm) || selectedCategory !== "All" || selectedStatus !== "All";
 
-    const searchTerm = search ? search.trim().toLowerCase() : "";
+  // نتحقق أولاً من كل دواء (مو سكشن) لوحده هل يطابق البحث/الفلاتر، ونحفظ
+  // نتيجته بمجموعة IDs — نحتاجها بعدين عشان نقرر أي سكاشن نعرضها
+  const matchingIds = new Set();
+  medicines.forEach((medicine) => {
+    if (medicine.isSection) return;
+
     const drugLineNumber = String(medicineLineNumbers.get(medicine.id) ?? "");
 
     // التحقق هل مصطلح البحث مطابـق لاسم الدواء الأساسي، أو الكود، أو رقم السطر
     const matchMain =
       drugLineNumber === searchTerm ||
-      (medicine.name && medicine.name.toLowerCase().includes(searchTerm)) || 
+      (medicine.name && medicine.name.toLowerCase().includes(searchTerm)) ||
       (medicine.code && String(medicine.code).toLowerCase().includes(searchTerm));
 
     // ⭐ التحقق أيضاً هل مصطلح البحث موجود داخل أي اسم من الأسماء البديلة (otherNames)
-    const matchAlternatives = 
-      medicine.otherNames && 
-      Array.isArray(medicine.otherNames) && 
+    const matchAlternatives =
+      medicine.otherNames &&
+      Array.isArray(medicine.otherNames) &&
       medicine.otherNames.some(altName => altName && altName.toLowerCase().includes(searchTerm));
 
     const matchSearch = !searchTerm || matchMain || matchAlternatives;
@@ -1394,8 +1709,8 @@ const filteredMedicines = useMemo(() => {
     // جلب التصنيفات بأمان تام
     let medCategories = [];
     try {
-      medCategories = Array.isArray(medicine.categories) 
-        ? medicine.categories 
+      medCategories = Array.isArray(medicine.categories)
+        ? medicine.categories
         : (typeof getDrugCategories === 'function' ? getDrugCategories(medicine.name, medicine.code) : []);
     } catch (err) {
       medCategories = [];
@@ -1422,9 +1737,55 @@ const filteredMedicines = useMemo(() => {
         ? isLowStock
         : status === selectedStatus);
 
-    return matchSearch && matchCategory && matchStatus;
+    if (matchSearch && matchCategory && matchStatus) {
+      matchingIds.add(medicine.id);
+    }
   });
+
+  // ثاني تمريرة: نبني القائمة النهائية بنفس ترتيب medicines الأصلي، ونقرر
+  // لكل سكشن هل نعرضه ولا لا. لو ماكو أي فلتر فعّال (بحث/تصنيف/حالة) نعرض
+  // كل السكاشن زي ما كانت (حتى الفاضية، عشان تصير جاهزة لإضافة أدوية فيها).
+  // لو فيه فلتر فعّال، نعرض السكشن بس إذا فيه دواء واحد على الأقل تحته
+  // يطابق الفلتر الحالي — عشان ما يطلع لنا كل السكاشن الفاضية أثناء البحث
+  const result = [];
+  for (let i = 0; i < medicines.length; i++) {
+    const medicine = medicines[i];
+
+    if (!medicine.isSection) {
+      if (matchingIds.has(medicine.id)) result.push(medicine);
+      continue;
+    }
+
+    if (!isFiltering) {
+      result.push(medicine);
+      continue;
+    }
+
+    let hasMatchUnderneath = false;
+    for (let j = i + 1; j < medicines.length; j++) {
+      if (medicines[j].isSection) break;
+      if (matchingIds.has(medicines[j].id)) {
+        hasMatchUnderneath = true;
+        break;
+      }
+    }
+
+    if (hasMatchUnderneath) result.push(medicine);
+  }
+
+  return result;
 }, [medicines, medicineLineNumbers, search, selectedCategory, selectedStatus]);
+
+// شبكة أمان: لو تغيّر عدد الأدوية (حذف/دمج/فلترة) وصار رقم الصفحة الحالي
+// أكبر من آخر صفحة متوفرة فعليًا، نرجعه لآخر صفحة صحيحة بدل ما يفضل
+// عالق على صفحة فاضية
+useEffect(() => {
+  const medicinesOnlyCount = filteredMedicines.filter((m) => !m.isSection).length;
+  const totalPages = Math.max(1, Math.ceil(medicinesOnlyCount / rowsPerPage));
+  if (page > totalPages - 1) {
+    setPage(totalPages - 1);
+  }
+}, [filteredMedicines, rowsPerPage, page]);
 
 // لما يتحدد دواء للتوهيج (highlightedMedicineId) وتكون قائمة الأدوية جاهزة،
 // نروح لصفحة الترقيم الصحيحة اللي موجود فيها هذا الدواء، ثم نسكرول له
@@ -1438,7 +1799,14 @@ useEffect(() => {
 
   if (indexInFiltered === -1) return;
 
-  const targetPage = Math.floor(indexInFiltered / rowsPerPage);
+  // رقم الصفحة لازم يتحسب باعتماد على عدد الأدوية الحقيقية قبل هذا الدواء
+  // بس (نفس منطق getMedicinePageSlice) — لو اعتمدنا رقم موقعه الخام
+  // بالمصفوفة (اللي فيها صفوف عناوين الأقسام مندمجة)، كنا نطلع لصفحة غلط
+  // كل ما فيه قسم أو أكثر قبل الدواء المقصود
+  const realCountBefore = filteredMedicines
+    .slice(0, indexInFiltered)
+    .filter((m) => !m.isSection).length;
+  const targetPage = Math.floor(realCountBefore / rowsPerPage);
   setPage(targetPage);
 
   const scrollTimer = setTimeout(() => {
@@ -1632,6 +2000,10 @@ return (
           });
 
           setCodeNotRecognized(false);
+          setIsDualCodeEntry(false);
+          setSecondMedicine(emptySecondMedicine());
+          setCodeSuggestion(null);
+          setNameSuggestion(null);
           setOpen(true);
         }}
         sx={{
@@ -1988,15 +2360,14 @@ return (
 ) : (
 (() => {
 
-  return filteredMedicines
-    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+  return getMedicinePageSlice(filteredMedicines, page, rowsPerPage)
     .map((medicine, index) => {
       const actualIndex = page * rowsPerPage + index;
 
       if (medicine.isSection) {
         return (
           <TableRow
-    key={actualIndex}
+    key={medicine.id ?? `section-${actualIndex}`}
     sx={{
       backgroundColor: "#f0f9ff",
       borderLeft: "4px solid #0284c7"
@@ -2022,7 +2393,7 @@ return (
 
       return (
               <TableRow
-                key={actualIndex}
+                key={medicine.id ?? `row-${actualIndex}`}
                 ref={(el) => { rowRefs.current[medicine.id] = el; }}
                 sx={isHighlighted ? {
                   animation: "shelfSensePulseHighlight 1.3s ease-in-out 2",
@@ -2261,7 +2632,7 @@ return (
 <TableCell align="center">
   <Box sx={{ display: "inline-flex", bgcolor: "#f3f4f6", p: 0.5, borderRadius: "10px", gap: 0.5 }}>
     <Tooltip title="Edit Medicine">
-      <IconButton size="small" onClick={() => { setNewMedicine({ ...medicine, expiryDates: medicine.expiryDates?.length ? [...medicine.expiryDates] : [medicine.expiry || ""] }); setEditIndex(medicine.id); setCodeNotRecognized(false); setOpen(true); }} sx={{ bgcolor: "#fff", "&:hover": { bgcolor: "#e5e7eb" }, borderRadius: "8px" }}>
+      <IconButton size="small" onClick={() => { setNewMedicine({ ...medicine, expiryDates: medicine.expiryDates?.length ? [...medicine.expiryDates] : [medicine.expiry || ""] }); setEditIndex(medicine.id); setCodeNotRecognized(false); setIsDualCodeEntry(false); setSecondMedicine(emptySecondMedicine()); setCodeSuggestion(null); setNameSuggestion(null); setOpen(true); }} sx={{ bgcolor: "#fff", "&:hover": { bgcolor: "#e5e7eb" }, borderRadius: "8px" }}>
         <EditIcon fontSize="small" sx={{ color: "#374151" }} />
       </IconButton>
     </Tooltip>
@@ -2300,40 +2671,167 @@ return (
 
         </Table>
 
-        {/* ترقيم الصفحات مع الأسهم الشاملة (First, Prev, Next, Last) وحد أقصى 50 لضمان السرعة */}
-        <TablePagination
-          component="div"
-          count={filteredMedicines.length}
-          page={page}
-          onPageChange={(e, newPage) => setPage(newPage)}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={(e) => {
-            setRowsPerPage(parseInt(e.target.value, 10));
-            setPage(0);
-          }}
-          rowsPerPageOptions={[10, 25, 50]}
-          labelDisplayedRows={({ from, to }) => {
-            // العدد المعروض هنا يستثني الأقسام (الأقسام مو أدوية فعلية)
-            const medicinesOnlyCount = filteredMedicines.filter((m) => !m.isSection).length;
-            return `${from}–${to} of ${medicinesOnlyCount}`;
-          }}
-          slotProps={{
-            actions: {
-              showFirstButton: true,
-              showLastButton: true,
-            },
-            select: {
-              native: true,
-            },
-          }}
-        />
+        {/* شريط ترقيم صفحات احترافي: أول/سابق/أرقام صفحات مع "..." للفجوات/تالي/أخير،
+            بدل شكل TablePagination الافتراضي — نفس أرقام الصفحة والكمية بالصف ماتغيرت */}
+        {(() => {
+          const medicinesOnlyCount = filteredMedicines.filter((m) => !m.isSection).length;
+          const totalPages = Math.max(1, Math.ceil(medicinesOnlyCount / rowsPerPage));
+          const currentPage = page + 1;
+          const from = medicinesOnlyCount === 0 ? 0 : page * rowsPerPage + 1;
+          const to = Math.min(medicinesOnlyCount, (page + 1) * rowsPerPage);
+          const pageNumbers = getPaginationPageNumbers(currentPage, totalPages);
+
+          const pageButtonSx = (active) => ({
+            minWidth: 34,
+            height: 34,
+            borderRadius: "8px",
+            fontSize: 13,
+            fontWeight: 700,
+            p: 0,
+            color: active ? "#fff" : "#374151",
+            bgcolor: active ? "#2563eb" : "transparent",
+            "&:hover": { bgcolor: active ? "#1d4ed8" : "#f3f4f6" },
+          });
+
+          return (
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 1.5,
+                borderTop: "1px solid #EAECF0",
+                px: 2,
+                py: 1.5,
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                <Typography sx={{ fontSize: 13, color: "#667085" }}>
+                  Showing {from} to {to} of {medicinesOnlyCount} items
+                </Typography>
+
+                <Select
+                  size="small"
+                  value={rowsPerPage}
+                  onChange={(e) => {
+                    setRowsPerPage(parseInt(e.target.value, 10));
+                    setPage(0);
+                  }}
+                  sx={{
+                    fontSize: 13,
+                    height: 32,
+                    borderRadius: "8px",
+                    "& .MuiSelect-select": { py: 0.5, pl: 1.2 },
+                  }}
+                >
+                  {[10, 25, 50].map((n) => (
+                    <MenuItem key={n} value={n} sx={{ fontSize: 13 }}>
+                      {n} per page
+                    </MenuItem>
+                  ))}
+                </Select>
+              </Box>
+
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
+                <Tooltip title="First page">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={page === 0}
+                      onClick={() => setPage(0)}
+                      sx={pageButtonSx(false)}
+                    >
+                      <KeyboardDoubleArrowLeftIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Previous page">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={page === 0}
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                      sx={pageButtonSx(false)}
+                    >
+                      <ChevronLeftIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+
+                {pageNumbers.map((p, i) =>
+                  p === "…" ? (
+                    <Typography key={`dots-${i}`} sx={{ px: 0.5, color: "#98A2B3", fontSize: 13 }}>
+                      …
+                    </Typography>
+                  ) : (
+                    <Button
+                      key={p}
+                      onClick={() => setPage(p - 1)}
+                      sx={pageButtonSx(p === currentPage)}
+                    >
+                      {p}
+                    </Button>
+                  )
+                )}
+
+                <Tooltip title="Next page">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={page >= totalPages - 1}
+                      onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                      sx={pageButtonSx(false)}
+                    >
+                      <ChevronRightIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Last page">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={page >= totalPages - 1}
+                      onClick={() => setPage(totalPages - 1)}
+                      sx={pageButtonSx(false)}
+                    >
+                      <KeyboardDoubleArrowRightIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Box>
+            </Box>
+          );
+        })()}
       </TableContainer>
 
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
       >
-        <DialogTitle>Add Medicine</DialogTitle>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          Add Medicine
+          {isDualCodeEntry && editIndex === null && (
+            <Tooltip title="This NUPCO code has a second item — scroll down to fill in its details too">
+              <Chip
+                icon={<KeyboardDoubleArrowDownIcon sx={{ fontSize: 16, color: "#fff !important" }} />}
+                label="2nd item below"
+                size="small"
+                sx={{
+                  bgcolor: "#2563eb",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 11,
+                  animation: "dualItemHintBounce 1.4s ease-in-out infinite",
+                  "@keyframes dualItemHintBounce": {
+                    "0%, 100%": { transform: "translateY(0)" },
+                    "50%": { transform: "translateY(3px)" },
+                  },
+                }}
+              />
+            </Tooltip>
+          )}
+        </DialogTitle>
 
         <DialogContent>
 
@@ -2343,21 +2841,148 @@ return (
             margin="normal"
             value={newMedicine.code}
             onChange={handleCodeChange}
+            onKeyDown={handleCodeFieldKeyDown}
             placeholder="Enter Nupco Code to fetch name automatically..."
           />
+
+          {/* اقتراح شفاف (مو تعبئة فعلية) وإحنا لسا بنص كتابة الكود — يظهر بس
+              لو فيه مطابقة بادئة واضحة، ويختفي أول ما يوصل الكود لمطابقة تامة
+              أو يطول عن الحد المسموح. الضغط Tab أو Enter يقبله */}
+          {codeSuggestion && !codeTooLong && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.5,
+                mt: -1,
+                mb: 1.5,
+                px: 0.5,
+                opacity: 0.75,
+              }}
+            >
+              <KeyboardTabIcon sx={{ fontSize: 13, color: "#94a3b8" }} />
+              <Typography sx={{ fontSize: 11.5, color: "#64748b", fontStyle: "italic" }}>
+                {codeSuggestion.name} ({codeSuggestion.code}) — press Tab to autofill
+              </Typography>
+            </Box>
+          )}
+
+          {/* تحذير طول الكود — نقلته يصير مباشرة تحت خانة NUPCO Code نفسها
+              (كان يظهر غلط تحت خانة الاسم)، وبتصميم صندوق واضح بدل السطر
+              الرفيع القديم اللي كان يعتمد على margin سالب */}
+          {codeTooLong && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 1,
+                bgcolor: "#fffbeb",
+                border: "1px solid #fde68a",
+                borderRadius: "10px",
+                p: 1.25,
+                mt: -1,
+                mb: 1.5,
+              }}
+            >
+              <WarningAmberIcon sx={{ fontSize: 18, color: "#d97706", mt: 0.15 }} />
+              <Typography sx={{ fontSize: 12, color: "#92400e", lineHeight: 1.5 }}>
+                This exceeds the usual NUPCO code digit count ({NUPCO_CODE_LENGTH} digits) — double-check it before saving.
+              </Typography>
+            </Box>
+          )}
 
           <TextField
             label="Medicine Name"
             fullWidth
             margin="normal"
             value={newMedicine.name}
-            onChange={(e) =>
-              setNewMedicine({
-                ...newMedicine,
-                name: e.target.value,
-              })
-            }
+            onChange={handleNameFieldChange}
+            onKeyDown={handleNameFieldKeyDown}
           />
+
+          {/* نفس فكرة الاقتراح الشفاف بس بالاتجاه المعاكس: كتب اسم يطابق
+              بداية اسم بقاعدة بيانات الوزارة وخانة الكود لسا فاضية */}
+          {nameSuggestion && !newMedicine.code && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.5,
+                mt: -1,
+                mb: 1.5,
+                px: 0.5,
+                opacity: 0.75,
+              }}
+            >
+              <KeyboardTabIcon sx={{ fontSize: 13, color: "#94a3b8" }} />
+              <Typography sx={{ fontSize: 11.5, color: "#64748b", fontStyle: "italic" }}>
+                NUPCO code: {nameSuggestion.code} — press Tab to autofill
+              </Typography>
+            </Box>
+          )}
+
+          {/* تحذير "الكود مو موجود بقاعدة البيانات" — يفضل بنفس مكانه تحت
+              خانة الاسم، بس بتصميم صندوق أوضح ومرتب بدل السطر الرفيع القديم */}
+          {codeNotRecognized && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 1,
+                bgcolor: "#fffbeb",
+                border: "1px solid #fde68a",
+                borderRadius: "10px",
+                p: 1.25,
+                mt: -1,
+                mb: 1.5,
+              }}
+            >
+              <WarningAmberIcon sx={{ fontSize: 18, color: "#d97706", mt: 0.15 }} />
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, flexWrap: "wrap" }}>
+                  <Typography sx={{ fontSize: 12, color: "#92400e", fontWeight: 600 }}>
+                    NUPCO code not found in our database.
+                  </Typography>
+                  <Tooltip
+                    arrow
+                    placement="top"
+                    title={
+                      <Box sx={{ p: 0.5 }}>
+                        <Typography sx={{ fontSize: 11.5, fontWeight: 700, mb: 0.5 }}>
+                          Before adding it manually:
+                        </Typography>
+                        <Typography sx={{ fontSize: 11, lineHeight: 1.6 }}>
+                          1. Make sure it's a NUPCO code, not a MOH code<br />
+                          2. Double-check you typed it correctly<br />
+                          3. If it's correct, adding it now will auto-match future
+                          items — or send it to support to add it and stay in sync
+                          with ministry updates
+                        </Typography>
+                      </Box>
+                    }
+                  >
+                    <InfoOutlinedIcon
+                      sx={{ fontSize: 15, color: "#b45309", cursor: "help" }}
+                    />
+                  </Tooltip>
+                </Box>
+
+                <Typography
+                  onClick={() => navigate("/support")}
+                  sx={{
+                    fontSize: 11.5,
+                    color: "#b45309",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    width: "fit-content",
+                    "&:hover": { textDecoration: "underline" },
+                  }}
+                >
+                  Contact support
+                </Typography>
+              </Box>
+            </Box>
+          )}
 
           {/* صندوق أزرق فاتح يظهر الكاتيقوري المصاحبة تلقائيًا بمجرد ما
               يتعرف على اسم/كود الدواء — يختفي طبيعي لو ما فيه كاتيقوري */}
@@ -2404,78 +3029,6 @@ return (
               </Box>
             );
           })()}
-
-          {codeTooLong && (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 0.6,
-                mt: -1.2,
-                mb: 1,
-                flexWrap: "wrap",
-              }}
-            >
-              <WarningAmberIcon sx={{ fontSize: 15, color: "#d97706" }} />
-              <Typography sx={{ fontSize: 11.5, color: "#b45309" }}>
-                This exceeds the usual NUPCO code digit count ({NUPCO_CODE_LENGTH} digits).
-              </Typography>
-            </Box>
-          )}
-
-          {codeNotRecognized && (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 0.6,
-                mt: -1.2,
-                mb: 1,
-                flexWrap: "wrap",
-              }}
-            >
-              <WarningAmberIcon sx={{ fontSize: 15, color: "#d97706" }} />
-              <Typography sx={{ fontSize: 11.5, color: "#b45309" }}>
-                NUPCO code not found in our database.
-              </Typography>
-
-              <Tooltip
-                arrow
-                placement="top"
-                title={
-                  <Box sx={{ p: 0.5 }}>
-                    <Typography sx={{ fontSize: 11.5, fontWeight: 700, mb: 0.5 }}>
-                      Before adding it manually:
-                    </Typography>
-                    <Typography sx={{ fontSize: 11, lineHeight: 1.6 }}>
-                      1. Make sure it's a NUPCO code, not a MOH code<br />
-                      2. Double-check you typed it correctly<br />
-                      3. If it's correct, adding it now will auto-match future
-                      items — or send it to support to add it and stay in sync
-                      with ministry updates
-                    </Typography>
-                  </Box>
-                }
-              >
-                <InfoOutlinedIcon
-                  sx={{ fontSize: 15, color: "#b45309", cursor: "help" }}
-                />
-              </Tooltip>
-
-              <Typography
-                onClick={() => navigate("/support")}
-                sx={{
-                  fontSize: 11.5,
-                  color: "#b45309",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  "&:hover": { textDecoration: "underline" },
-                }}
-              >
-                Contact support
-              </Typography>
-            </Box>
-          )}
 
           <TextField
             label="Quantity"
@@ -2617,12 +3170,163 @@ return (
 >
     + Add Expiry Date
 </Button>
+
+{/* الخانة الثانية — تظهر فقط لمن الكود المكتوب من الأكواد المشتركة
+    الاستثنائية (وإحنا بوضع إضافة جديد مو تعديل). لمن يضغط "حفظ" ينحفظ
+    هذا الصنف كسجل مستقل تمامًا بكميته وتواريخه الخاصة */}
+{isDualCodeEntry && editIndex === null && (
+  <Box
+    sx={{
+      mt: 2.5,
+      pt: 2,
+      borderTop: "2px dashed #bfdbfe",
+    }}
+  >
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 0.8,
+        bgcolor: "#eff6ff",
+        border: "1px solid #bfdbfe",
+        borderRadius: "10px",
+        p: 1,
+        mb: 1,
+      }}
+    >
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: "#2563eb" }} />
+      <Typography sx={{ fontSize: 12, color: "#1d4ed8", fontWeight: 600 }}>
+        This NUPCO code is shared by two different items. Add the second item's details below —
+        both will be saved as separate entries with their own quantity and expiry.
+      </Typography>
+    </Box>
+
+    <TextField
+      label="Second Item — Medicine Name"
+      fullWidth
+      margin="normal"
+      value={secondMedicine.name}
+      onChange={(e) => setSecondMedicine({ ...secondMedicine, name: e.target.value })}
+    />
+
+    <TextField
+      label="Second Item — Quantity"
+      fullWidth
+      margin="normal"
+      value={secondMedicine.quantity}
+      onChange={(e) => setSecondMedicine({ ...secondMedicine, quantity: normalizeDigits(e.target.value) })}
+    />
+
+    <TextField
+      label="Second Item — Reorder Level"
+      fullWidth
+      margin="normal"
+      helperText="Optional — defaults to 20"
+      value={secondMedicine.reorderLevel ?? "20"}
+      onChange={(e) => setSecondMedicine({ ...secondMedicine, reorderLevel: normalizeDigits(e.target.value) })}
+    />
+
+    {secondMedicine.expiryDates.map((date, index) => (
+      <Box key={index} sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+        <TextField
+          type="text"
+          fullWidth
+          margin="normal"
+          label={`Second Item — Expiry ${index + 1}`}
+          placeholder="e.g. 2027-05-05 or just 5/2027"
+          helperText="Full date, or just month/year (last day of that month is used automatically)"
+          value={date}
+          onChange={(e) => {
+            const dates = [...secondMedicine.expiryDates];
+            dates[index] = normalizeDigits(e.target.value);
+            setSecondMedicine({ ...secondMedicine, expiryDates: dates });
+          }}
+          onBlur={(e) => {
+            const dates = [...secondMedicine.expiryDates];
+            dates[index] = parseFlexibleDate(e.target.value);
+            setSecondMedicine({ ...secondMedicine, expiryDates: dates });
+          }}
+          slotProps={{
+            inputLabel: { shrink: true },
+            htmlInput: { dir: "ltr", style: { direction: "ltr", textAlign: "left" } },
+            input: {
+              endAdornment: (
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    const input = hiddenDateInputRefs2.current[index];
+                    if (input) {
+                      if (typeof input.showPicker === "function") {
+                        input.showPicker();
+                      } else {
+                        input.click();
+                      }
+                    }
+                  }}
+                >
+                  <CalendarMonthIcon fontSize="small" />
+                </IconButton>
+              ),
+            },
+          }}
+        />
+
+        <input
+          ref={(el) => (hiddenDateInputRefs2.current[index] = el)}
+          type="date"
+          value={date}
+          onChange={(e) => {
+            const dates = [...secondMedicine.expiryDates];
+            dates[index] = e.target.value;
+            setSecondMedicine({ ...secondMedicine, expiryDates: dates });
+          }}
+          style={{
+            position: "absolute",
+            width: 0,
+            height: 0,
+            opacity: 0,
+            pointerEvents: "none",
+            border: "none",
+          }}
+        />
+
+        <IconButton
+          color="error"
+          onClick={() => {
+            const dates = secondMedicine.expiryDates.filter((_, i) => i !== index);
+            setSecondMedicine({ ...secondMedicine, expiryDates: dates });
+          }}
+        >
+          ✕
+        </IconButton>
+      </Box>
+    ))}
+    <Button
+      variant="outlined"
+      sx={{ mt: 1 }}
+      onClick={() =>
+        setSecondMedicine({
+          ...secondMedicine,
+          expiryDates: [...secondMedicine.expiryDates, ""],
+        })
+      }
+    >
+      + Add Expiry Date (Second Item)
+    </Button>
+  </Box>
+)}
         </DialogContent>
 
         <DialogActions>
 
           <Button
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+              setIsDualCodeEntry(false);
+              setSecondMedicine(emptySecondMedicine());
+              setCodeSuggestion(null);
+              setNameSuggestion(null);
+            }}
           >
             Cancel
           </Button>
