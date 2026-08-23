@@ -38,7 +38,7 @@ export default function Support() {
       </Box>
 
       {/* Main Grid Layout */}
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1.2fr 1.3fr" }, gap: 3, mb: 4 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1.2fr 1.3fr" }, gap: 3, mb: 3 }}>
         
         {/* Left Card: Developer & Technical Support */}
         <Paper 
@@ -121,7 +121,7 @@ export default function Support() {
           </Box>
         </Paper>
 
-        {/* Right Card: System Resources */}
+        {/* Right Card: System Resources (files only — search tool moved to its own standalone card below) */}
         <Paper 
           elevation={0} 
           sx={{ 
@@ -148,41 +148,6 @@ export default function Support() {
 
             {/* Resource Cards Stack */}
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-
-              {/* Resource: Quick Search Tool (NEW — searches all 3 policy files at once) */}
-              <Paper
-                component="a"
-                href="REPLACE_WITH_YOUR_HOSTED_TOOL_URL"
-                target="_blank"
-                rel="noopener noreferrer"
-                elevation={0}
-                sx={{
-                  p: 2,
-                  borderRadius: 3,
-                  bgcolor: "#faf5ff",
-                  border: "1px solid #e9d5ff",
-                  display: "block",
-                  textDecoration: "none",
-                  transition: "all 0.2s ease",
-                  "&:hover": { borderColor: "#9333ea", bgcolor: "#f3e8ff" }
-                }}
-              >
-                <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                  <Search size={18} color="#9333ea" style={{ marginTop: 2 }} />
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#0f172a", mb: 0.5 }}>
-                      Quick Classification Search Tool
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: "#64748b", display: "block", lineHeight: 1.4 }}>
-                      Search across all 3 policy files (LASA, Hazardous, High-Alert) at once and see every classification a medication falls under.
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: "#a855f7", display: "block", mt: 0.5, fontSize: "10.5px", fontWeight: 600 }}>
-                      For quick reference only — always confirm against the official policy for critical decisions.
-                    </Typography>
-                  </Box>
-                  <ExternalLink size={15} color="#9333ea" style={{ marginTop: 2, flexShrink: 0 }} />
-                </Box>
-              </Paper>
 
               {/* Resource 1: System Presentation (لسا ما جهزناه — نعرضه
                   باهت وغير قابل للنقر، مع "Not available currently") */}
@@ -282,6 +247,55 @@ export default function Support() {
         </Paper>
 
       </Box>
+
+      {/* Standalone Card: Quick Classification Search Tool — separated from the resource list so it doesn't compete visually */}
+      <Paper
+        component="a"
+        href="/classification-search.html"
+        target="_blank"
+        rel="noopener noreferrer"
+        elevation={0}
+        sx={{
+          p: 3,
+          borderRadius: 4,
+          bgcolor: "#faf5ff",
+          border: "1.5px solid #e9d5ff",
+          display: "flex",
+          alignItems: "center",
+          gap: 2.5,
+          textDecoration: "none",
+          mb: 4,
+          transition: "all 0.2s ease",
+          boxShadow: "0 4px 6px -1px rgba(147, 51, 234, 0.04)",
+          "&:hover": { borderColor: "#9333ea", bgcolor: "#f3e8ff", boxShadow: "0 6px 12px -2px rgba(147, 51, 234, 0.12)" }
+        }}
+      >
+        <Box
+          sx={{
+            p: 1.6,
+            bgcolor: "#9333ea",
+            color: "#ffffff",
+            borderRadius: 3,
+            display: "flex",
+            flexShrink: 0,
+            boxShadow: "0 6px 10px -2px rgba(147, 51, 234, 0.3)"
+          }}
+        >
+          <Search size={22} />
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: "#0f172a", mb: 0.3 }}>
+            Quick Classification Search Tool
+          </Typography>
+          <Typography variant="body2" sx={{ color: "#64748b", lineHeight: 1.5, mb: 0.5 }}>
+            Search across all 3 policy files (LASA, Hazardous, High-Alert) at once and see every classification a medication falls under.
+          </Typography>
+          <Typography variant="caption" sx={{ color: "#a855f7", fontWeight: 700, display: "block" }}>
+            For quick reference only — always confirm against the official policy for critical decisions.
+          </Typography>
+        </Box>
+        <ExternalLink size={18} color="#9333ea" style={{ flexShrink: 0 }} />
+      </Paper>
 
       {/* Subtle Footer */}
       <Divider sx={{ my: 3, borderColor: "#e2e8f0" }} />

@@ -49,8 +49,8 @@ import FormatAlignLeftIcon from "@mui/icons-material/FormatAlignLeft";
 import FormatAlignCenterIcon from "@mui/icons-material/FormatAlignCenter";
 import FormatAlignRightIcon from "@mui/icons-material/FormatAlignRight";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import HearingIcon from "@mui/icons-material/Hearing";
-import VisibilityIcon from "@mui/icons-material/Visibility";
+import HearingIcon from "@mui/icons-material/HearingOutlined";
+import VisibilityIcon from "@mui/icons-material/RemoveRedEyeOutlined";
 import { AlertCircle as ErrorOutline } from "lucide-react";
 import DoNotDisturbAltIcon from "@mui/icons-material/DoNotDisturbAlt";
 import GroupsIcon from "@mui/icons-material/Groups";
@@ -59,6 +59,8 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
+import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
 import OpenWithIcon from "@mui/icons-material/OpenWith";
 import CloseIcon from "@mui/icons-material/Close";
 import { useNavigate } from "react-router-dom";
@@ -98,6 +100,54 @@ function getStatus(expiry) {
 
 const STATUS_CHIP = { Safe: "success", "Near Expiry": "warning", Expired: "error" };
 
+// Exact wording/day-math the Inventory page already uses for its status-chip
+// hover tooltip, so both pages say the same thing for the same date.
+function getCountdownText(expiry) {
+  if (!expiry) return "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiryDate = new Date(expiry);
+  expiryDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((expiryDate - today) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) {
+    const daysAgo = Math.abs(diffDays);
+    return `Expired ${daysAgo} ${daysAgo === 1 ? "day" : "days"} ago`;
+  }
+  if (diffDays === 0) return "Expires today";
+  if (diffDays >= 30) {
+    const months = Math.floor(diffDays / 30);
+    const remainingDays = diffDays % 30;
+    const monthsText = `${months} ${months === 1 ? "month" : "months"}`;
+    return remainingDays > 0
+      ? `${monthsText} and ${remainingDays} ${remainingDays === 1 ? "day" : "days"} left`
+      : `${monthsText} left`;
+  }
+  return `${diffDays} ${diffDays === 1 ? "day" : "days"} left`;
+}
+
+// Same "1 … 4 5 [6] 7 8 … 20" page-number list the Inventory page uses,
+// instead of MUI's plain TablePagination, for a consistent pagination bar.
+function getPaginationPageNumbers(currentPage, totalPages) {
+  const delta = 1;
+  const range = [];
+  const withDots = [];
+  let last = null;
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= currentPage - delta && i <= currentPage + delta)) {
+      range.push(i);
+    }
+  }
+  range.forEach((i) => {
+    if (last !== null) {
+      if (i - last === 2) withDots.push(last + 1);
+      else if (i - last > 1) withDots.push("…");
+    }
+    withDots.push(i);
+    last = i;
+  });
+  return withDots;
+}
+
 const CATEGORY_STYLE = {
   "High Alert": { bg: "#E53935", text: "#fff", emoji: "⚠️ " },
   Hazardous: { bg: "#8B5CF6", text: "#fff", emoji: "" },
@@ -110,26 +160,34 @@ const CATEGORY_STYLE = {
 // yellow (with a small ear/eye badge) for Sound/Look-Alike, plain white
 // for medicines with no category.
 const CATEGORY_LABEL_STYLES = {
-  Hazardous: { bg: "#9269F6", text: "#fff", accent: "#fff", chip: null },
-  "High Alert": { bg: "#DA2E20", text: "#fff", accent: "#fff", chip: null },
+  Hazardous: { bg: "#9269F6", text: "#fff", accent: "#fff", chip: { category: "Hazardous", label: "Hazardous" } },
+  "High Alert": { bg: "#DA2E20", text: "#fff", accent: "#fff", chip: { category: "High Alert", label: "High Alert" } },
   "Sound Alike": { bg: "#FFFF55", text: "#000", accent: "#000", chip: { category: "Sound Alike", label: "Sound Alike" } },
   "Look Alike": { bg: "#FFFF55", text: "#000", accent: "#000", chip: { category: "Look Alike", label: "Look Alike" } },
   Normal: { bg: "#FFFFFF", text: "#111827", accent: "#1D4ED8", chip: null },
 };
 
-// A medicine can carry more than one category tag. The printed sticker should
-// stay ONE solid colour (never force a choice between two full swatches):
-// High Alert / Hazardous wins as the base colour, and Sound/Look Alike becomes
-// a small corner badge on top of it. If only Sound/Look Alike applies, that
-// yellow IS the base colour (matches the approved solid-yellow sticker).
+// A medicine can carry more than one category tag (e.g. Hazardous AND High
+// Alert AND Look Alike all at once). Sound/Look Alike never gets its own
+// card — it rides along as a small corner badge on top of whichever card is
+// used. But if a medicine has BOTH High Alert AND Hazardous, those are two
+// genuinely different colours/meanings, so we offer one full card per
+// primary colour and let the user pick — never silently drop one to a tiny
+// badge.
+const CATEGORY_PRIORITY = ["High Alert", "Hazardous", "Sound Alike", "Look Alike"];
 const PRIMARY_CATS = ["High Alert", "Hazardous"];
-const BADGE_CATS = ["Sound Alike", "Look Alike"];
 function resolveCategoryLook(cats) {
-  const primary = PRIMARY_CATS.find((c) => cats.includes(c));
-  const secondary = BADGE_CATS.find((c) => cats.includes(c));
-  if (primary) return { base: primary, badge: secondary || null };
-  if (secondary) return { base: secondary, badge: null };
-  return { base: "Normal", badge: null };
+  const secondaryBadges = CATEGORY_PRIORITY.filter((c) => c === "Sound Alike" || c === "Look Alike").filter((c) => cats.includes(c));
+  const primaryOptions = PRIMARY_CATS.filter((c) => cats.includes(c));
+  if (primaryOptions.length > 0) {
+    return primaryOptions.map((base) => ({ base, badges: secondaryBadges }));
+  }
+  if (secondaryBadges.length > 0) {
+    // Only Sound/Look Alike present, nothing to choose between — that
+    // colour IS the base (matches the approved solid-yellow sticker).
+    return [{ base: secondaryBadges[0], badges: secondaryBadges.slice(1) }];
+  }
+  return [{ base: "Normal", badges: [] }];
 }
 
 const SIZE_PRESETS = {
@@ -296,14 +354,14 @@ export default function LabelPrinting() {
   const [expandedField, setExpandedField] = useState(null);
   const [logoDataUrl, setLogoDataUrl] = useState("");
   // Default corner matches the approved sticker: logo bottom-right, in its own small white strip.
-  const [logoPos, setLogoPos] = useState({ x: 82, y: 80 });
+  const [logoPos, setLogoPos] = useState({ x: 82, y: 87 });
   const [logoSize, setLogoSize] = useState(20);
   const [logoBg, setLogoBg] = useState(true); // white backing behind the logo, like the approved sticker
   const [qrCustomUrl, setQrCustomUrl] = useState("");
   const [qrSize, setQrSize] = useState(40);
   // Opposite corner from the logo's default, so they never start out overlapping.
-  const [qrPos, setQrPos] = useState({ x: 15, y: 88 });
-  const [categoryChip, setCategoryChip] = useState(null);
+  const [qrPos, setQrPos] = useState({ x: 15, y: 75 });
+  const [categoryChips, setCategoryChips] = useState([]);
   const [showCategoryBadge, setShowCategoryBadge] = useState(true);
   const [reviewOpen, setReviewOpen] = useState(false);
   // Whether the batch should print with one shared QR link instead of each
@@ -436,7 +494,7 @@ export default function LabelPrinting() {
     setAppearance((a) => ({ ...a, bg: tpl.bg, text: tpl.text, accent: tpl.accent }));
     setSizePreset("custom");
     setCustomSize(tpl.dims);
-    setCategoryChip(null);
+    setCategoryChips([]);
   }
 
   function goTemplate(dir) {
@@ -456,7 +514,7 @@ export default function LabelPrinting() {
     setSizePreset("custom");
     setCustomSize(tpl.dims);
     setOrientation("horizontal");
-    setCategoryChip(null);
+    setCategoryChips([]);
     document.getElementById("label-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -486,13 +544,15 @@ export default function LabelPrinting() {
   // Explicitly clears leftover action/message/expiry/status from whatever
   // template was active before, so the bottom message bar doesn't appear
   // uninvited.
-  function applyCategoryStyle(cats, withBadge = showCategoryBadge) {
-    const categories = Array.isArray(cats) ? cats : [cats];
-    const { base, badge } = resolveCategoryLook(categories);
+  // Applies one specific suggested-label option (a single {base, badges}
+  // choice, e.g. "High Alert card" vs "Hazardous card") — used by whichever
+  // card in the Suggested Label strip the user clicks, and by the batch
+  // auto-add flows (which just take the first/default option).
+  function applyCategoryStyle({ base, badges }, withBadge = showCategoryBadge) {
     const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
     setFields((f) => ({ ...f, name: true, logo: true, action: false, message: false, expiry: false, status: false }));
     setAppearance((a) => ({ ...a, bg: style.bg, text: style.text, accent: style.accent }));
-    setCategoryChip(withBadge && badge ? CATEGORY_LABEL_STYLES[badge].chip : null);
+    setCategoryChips(withBadge ? badges.map((b) => CATEGORY_LABEL_STYLES[b].chip) : []);
   }
 
   function addToBatch() {
@@ -503,8 +563,8 @@ export default function LabelPrinting() {
       appearance: { ...appearance },
       dims: { ...dims },
       orientation,
-      categoryChip,
-      badgeAvailable: categoryChip,
+      categoryChips,
+      badgesAvailable: categoryChips,
       // Captured at add-time so each queued label keeps its OWN QR link —
       // it doesn't silently pick up whatever link is in the editor later.
       qrUrl: qrCustomUrl,
@@ -519,9 +579,9 @@ export default function LabelPrinting() {
 
   function addAllFilteredToBatch() {
     const items = rows.map(({ med, categories }) => {
-      const { base, badge } = resolveCategoryLook(categories);
+      const { base, badges } = resolveCategoryLook(categories)[0];
       const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
-      const badgeChipDef = badge ? CATEGORY_LABEL_STYLES[badge].chip : null;
+      const badgeChipDefs = badges.map((b) => CATEGORY_LABEL_STYLES[b].chip);
       return {
         id: `b${Date.now()}_${med.id}`,
         labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
@@ -529,8 +589,8 @@ export default function LabelPrinting() {
         appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
         dims: { ...dims },
         orientation,
-        categoryChip: showCategoryBadge ? badgeChipDef : null,
-        badgeAvailable: badgeChipDef,
+        categoryChips: showCategoryBadge ? badgeChipDefs : [],
+        badgesAvailable: badgeChipDefs,
         // Left blank on purpose — each label then auto-generates its OWN
         // scan link from its own medicine code/name, so a batch of many
         // different medicines never all points to one shared link.
@@ -594,6 +654,12 @@ export default function LabelPrinting() {
             position: absolute; top: ${arrangement.y}mm; left: ${arrangement.x}mm;
             width: calc(${PAGE_W}mm - ${arrangement.x}mm - 5mm);
           }
+          /* Never split a single label across two pages — push it whole
+             onto the next page instead of printing half of it. */
+          #print-sheet > * {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
           .no-print { display: none !important; }
         }
       `}</style>
@@ -622,12 +688,17 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 <Typography variant="body2" sx={{ color: "#6b7280" }}>Editing:</Typography>
                 <Chip size="small" label={selectedMed.name} sx={{ fontWeight: 700, bgcolor: BLUE, color: "#fff" }} />
                 {selectedDate && <Chip size="small" label={selectedDate} variant="outlined" />}
-                {labelText.status && <Chip size="small" label={labelText.status} color={STATUS_CHIP[labelText.status]} />}
+                {labelText.status && (
+                  <Tooltip title={getCountdownText(labelText.expiry)} arrow placement="top">
+                    <Chip size="small" label={labelText.status} color={STATUS_CHIP[labelText.status]} sx={{ cursor: "pointer" }} />
+                  </Tooltip>
+                )}
                 <Button size="small" onClick={() => {
                   setSelectedMed(null);
                   setSelectedDate("");
                   setLabelText(buildLabelText(null, "", template));
-                  setCategoryChip(null);
+                  setCategoryChips([]);
+                  setAppearance((a) => ({ ...a, bg: CATEGORY_LABEL_STYLES.Normal.bg, text: CATEGORY_LABEL_STYLES.Normal.text, accent: CATEGORY_LABEL_STYLES.Normal.accent }));
                 }} sx={{ textTransform: "none", ml: "auto" }}>
                   Clear
                 </Button>
@@ -707,9 +778,11 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                     )}
                     {fields.qr && expandedField === "qr" && (
                       <>
-                        <TextField fullWidth size="small" label="Custom link for QR (optional)" sx={{ mt: 1.5 }}
-                          placeholder="Leave blank to link to this medicine automatically"
-                          helperText="Paste any URL and the QR code will open that instead — overrides the message below."
+                        <TextField fullWidth size="small" label="Link for this QR code" sx={{ mt: 1.5 }}
+                          placeholder="Attach the link this QR should open — e.g. https://..."
+                          helperText={qrCustomUrl.trim()
+                            ? "Scanning the QR will open this link."
+                            : "Nothing attached yet — this label's QR will auto-link to this medicine's own info page until you add one."}
                           value={qrCustomUrl} onChange={(e) => setQrCustomUrl(e.target.value)} />
 
                         {!qrCustomUrl.trim() && (
@@ -848,7 +921,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} categoryChip={categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
@@ -884,34 +957,46 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 </Typography>
                 {(() => {
                   const cats = [...new Set(selectedMed.categories || getDrugCategories(selectedMed.name, selectedMed.code))];
-                  const { base, badge } = resolveCategoryLook(cats);
-                  const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
-                  const badgeChip = badge ? CATEGORY_LABEL_STYLES[badge].chip : null;
+                  const options = resolveCategoryLook(cats);
+                  const anyBadges = options.some((o) => o.badges.length > 0);
                   return (
                     <>
-                      <Paper onClick={() => applyCategoryStyle(cats)} elevation={0}
-                        sx={{ p: 1.5, borderRadius: 3, cursor: "pointer", textAlign: "center", border: "1px solid #e5e7eb", "&:hover": { borderColor: BLUE } }}>
-                        <Box sx={{
-                          width: 140, height: 80, bgcolor: style.bg, color: style.text,
-                          display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13,
-                          border: "2px solid #000", position: "relative",
-                        }}>
-                          {selectedMed.name}
-                          {badgeChip && showCategoryBadge && (
-                            <Box sx={{ position: "absolute", top: 4, left: 4 }}>
-                              <CategoryBadge category={badgeChip.category} label={badgeChip.label} fontSize={9} />
-                            </Box>
-                          )}
-                        </Box>
-                        <Typography variant="caption" sx={{ display: "block", mt: 1, fontWeight: 600 }}>
-                          {base}{badge ? ` + ${badge}` : ""}
-                        </Typography>
-                      </Paper>
-                      {badge && (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, alignItems: "center" }}>
+                        {options.map((opt) => {
+                          const style = CATEGORY_LABEL_STYLES[opt.base] || CATEGORY_LABEL_STYLES.Normal;
+                          const badgeChips = opt.badges.map((b) => CATEGORY_LABEL_STYLES[b].chip);
+                          const isActive = appearance.bg === style.bg;
+                          return (
+                            <Paper key={opt.base} onClick={() => applyCategoryStyle(opt)} elevation={0}
+                              sx={{ p: 1.5, borderRadius: 3, cursor: "pointer", textAlign: "center", border: isActive ? `2px solid ${BLUE}` : "1px solid #e5e7eb", "&:hover": { borderColor: BLUE } }}>
+                              <Box sx={{
+                                width: 140, height: 80, bgcolor: style.bg, color: style.text,
+                                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13,
+                                border: "2px solid #000", position: "relative",
+                              }}>
+                                {selectedMed.name}
+                                {badgeChips.length > 0 && showCategoryBadge && (
+                                  <Box sx={{ position: "absolute", top: 4, left: 4, right: 4, display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "4px", alignItems: "flex-start" }}>
+                                    {badgeChips.map((c) => <CategoryBadge key={c.category} category={c.category} label={c.label} fontSize={9} />)}
+                                  </Box>
+                                )}
+                              </Box>
+                              <Typography variant="caption" sx={{ display: "block", mt: 1, fontWeight: 600 }}>
+                                {[opt.base, ...opt.badges].join(" + ")}
+                              </Typography>
+                            </Paper>
+                          );
+                        })}
+                      </Box>
+                      {anyBadges && (
                         <FormControlLabel sx={{ mt: 0.5, mx: 0 }}
                           control={<Checkbox size="small" checked={showCategoryBadge}
-                            onChange={(e) => { setShowCategoryBadge(e.target.checked); applyCategoryStyle(cats, e.target.checked); }} />}
-                          label={<Typography variant="caption">Show "{badge}" badge</Typography>} />
+                            onChange={(e) => {
+                              setShowCategoryBadge(e.target.checked);
+                              const active = options.find((o) => (CATEGORY_LABEL_STYLES[o.base] || CATEGORY_LABEL_STYLES.Normal).bg === appearance.bg) || options[0];
+                              applyCategoryStyle(active, e.target.checked);
+                            }} />}
+                          label={<Typography variant="caption">Show secondary badges</Typography>} />
                       )}
                     </>
                   );
@@ -1060,7 +1145,11 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                       <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1, mb: i < dates.length - 1 ? 1 : 0 }}>
                         <Box>
                           <Typography variant="body2">{date || "—"}</Typography>
-                          {date && <Chip label={statuses[i]} color={STATUS_CHIP[statuses[i]]} size="small" sx={{ mt: 0.3 }} />}
+                          {date && (
+                            <Tooltip title={getCountdownText(date)} arrow placement="top" enterTouchDelay={0} leaveTouchDelay={3000}>
+                              <Chip label={statuses[i]} color={STATUS_CHIP[statuses[i]]} size="small" sx={{ mt: 0.3, cursor: "pointer" }} />
+                            </Tooltip>
+                          )}
                         </Box>
                         <Tooltip title="Generate Label for this date">
                           <IconButton size="small" onClick={() => generateForDate(med, date, statuses[i])}
@@ -1070,15 +1159,15 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                         </Tooltip>
                         <Tooltip title="Add to batch (suggested category style)">
                           <IconButton size="small" onClick={() => {
-                            const { base, badge } = resolveCategoryLook(categories);
+                            const { base, badges } = resolveCategoryLook(categories)[0];
                             const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
-                            const badgeChipDef = badge ? CATEGORY_LABEL_STYLES[badge].chip : null;
+                            const badgeChipDefs = badges.map((b) => CATEGORY_LABEL_STYLES[b].chip);
                             setBatch((b) => [...b, {
                               id: `b${Date.now()}_${med.id}`,
                               labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
                               fields: { name: true, expiry: false, code: false, description: false, status: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
                               appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
-                              dims: { ...dims }, orientation, categoryChip: showCategoryBadge ? badgeChipDef : null, badgeAvailable: badgeChipDef,
+                              dims: { ...dims }, orientation, categoryChips: showCategoryBadge ? badgeChipDefs : [], badgesAvailable: badgeChipDefs,
                               qrUrl: "", qrMessageId: "", previewName: med.name,
                             }]);
                           }} sx={{ bgcolor: "#F0FDF4", "&:hover": { bgcolor: "#DCFCE7" }, borderRadius: "8px" }}>
@@ -1101,15 +1190,79 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               ))}
             </TableBody>
           </Table>
-          <TablePagination
-            component="div"
-            count={rows.length}
-            page={page}
-            onPageChange={(e, newPage) => setPage(newPage)}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-            rowsPerPageOptions={[10, 25, 50]}
-          />
+
+          {/* Same pagination bar style as the Inventory page — first/prev/page
+              numbers with "…" for gaps/next/last — instead of the plain
+              MUI TablePagination default. */}
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+            const currentPage = page + 1;
+            const from = rows.length === 0 ? 0 : page * rowsPerPage + 1;
+            const to = Math.min(rows.length, (page + 1) * rowsPerPage);
+            const pageNumbers = getPaginationPageNumbers(currentPage, totalPages);
+
+            const pageButtonSx = (active) => ({
+              minWidth: 34, height: 34, borderRadius: "8px", fontSize: 13, fontWeight: 700, p: 0,
+              color: active ? "#fff" : "#374151",
+              bgcolor: active ? BLUE : "transparent",
+              "&:hover": { bgcolor: active ? "#1E3A8A" : "#f3f4f6" },
+            });
+
+            return (
+              <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1.5, borderTop: "1px solid #EAECF0", px: 2, py: 1.5 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                  <Typography sx={{ fontSize: 13, color: "#667085" }}>
+                    Showing {from} to {to} of {rows.length} items
+                  </Typography>
+                  <Select size="small" value={rowsPerPage}
+                    onChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+                    sx={{ fontSize: 13, height: 32, borderRadius: "8px", "& .MuiSelect-select": { py: 0.5, pl: 1.2 } }}>
+                    {[10, 25, 50].map((n) => (
+                      <MenuItem key={n} value={n} sx={{ fontSize: 13 }}>{n} per page</MenuItem>
+                    ))}
+                  </Select>
+                </Box>
+
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
+                  <Tooltip title="First page">
+                    <span>
+                      <IconButton size="small" disabled={page === 0} onClick={() => setPage(0)} sx={pageButtonSx(false)}>
+                        <KeyboardDoubleArrowLeftIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Previous page">
+                    <span>
+                      <IconButton size="small" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} sx={pageButtonSx(false)}>
+                        <ChevronLeftIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  {pageNumbers.map((p, i) =>
+                    p === "…" ? (
+                      <Typography key={`dots-${i}`} sx={{ px: 0.5, color: "#98A2B3", fontSize: 13 }}>…</Typography>
+                    ) : (
+                      <Button key={p} onClick={() => setPage(p - 1)} sx={pageButtonSx(p === currentPage)}>{p}</Button>
+                    )
+                  )}
+                  <Tooltip title="Next page">
+                    <span>
+                      <IconButton size="small" disabled={page >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} sx={pageButtonSx(false)}>
+                        <ChevronRightIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Last page">
+                    <span>
+                      <IconButton size="small" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} sx={pageButtonSx(false)}>
+                        <KeyboardDoubleArrowRightIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Box>
+              </Box>
+            );
+          })()}
         </TableContainer>
 
         {/* ---------- GLOBAL FOOTER (تمت إضافته هنا بشكل احترافي ومتناسق) ---------- */}
@@ -1223,7 +1376,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         qrUrl={qrCustomUrl}
         qrSize={qrSize}
         qrPos={qrPos}
-        categoryChip={categoryChip}
+        categoryChips={categoryChips}
         qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""}
       />
 
@@ -1233,13 +1386,13 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
           ? batch.map((item) => (
               <LabelCard key={item.id} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
                 dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
-                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChip={item.categoryChip}
+                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={item.categoryChips}
                 qrMessageId={batchUnifyQr ? "" : item.qrMessageId} />
             ))
           : Array.from({ length: copies }).map((_, i) => (
               <LabelCard key={i} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
                 printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos}
-                categoryChip={categoryChip} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
             ))}
       </Box>
     </Container>
@@ -1255,13 +1408,13 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
     setBatch((b) => b.map((it) => it.id === id ? { ...it, fields: { ...it.fields, barcode: !it.fields.barcode } } : it));
   }
   function toggleBadge(id) {
-    setBatch((b) => b.map((it) => it.id === id ? { ...it, categoryChip: it.categoryChip ? null : it.badgeAvailable || null } : it));
+    setBatch((b) => b.map((it) => it.id === id ? { ...it, categoryChips: (it.categoryChips && it.categoryChips.length) ? [] : it.badgesAvailable || [] } : it));
   }
   function bulkBarcode(on) {
     setBatch((b) => b.map((it) => ({ ...it, fields: { ...it.fields, barcode: on } })));
   }
   function bulkBadge(on) {
-    setBatch((b) => b.map((it) => ({ ...it, categoryChip: on ? (it.badgeAvailable || null) : null })));
+    setBatch((b) => b.map((it) => ({ ...it, categoryChips: on ? (it.badgesAvailable || []) : [] })));
   }
 
   const pageItems = batch.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -1324,7 +1477,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                       fontSize: 8, fontWeight: 700, position: "relative", overflow: "hidden", px: 0.3,
                     }}>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.previewName}</span>
-                      {item.categoryChip && (
+                      {item.categoryChips && item.categoryChips.length > 0 && (
                         <Box sx={{ position: "absolute", bottom: 1, right: 1, bgcolor: "#FFFF55", width: 6, height: 6, borderRadius: "50%" }} />
                       )}
                     </Box>
@@ -1336,9 +1489,9 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip title={!item.badgeAvailable ? "No secondary category for this medicine" : item.categoryChip ? "Badge on — click to remove" : "Badge off — click to add"}>
+                    <Tooltip title={!item.badgesAvailable?.length ? "No secondary category for this medicine" : item.categoryChips?.length ? "Badge on — click to remove" : "Badge off — click to add"}>
                       <span>
-                        <Checkbox size="small" disabled={!item.badgeAvailable} checked={!!item.categoryChip} onChange={() => toggleBadge(item.id)} />
+                        <Checkbox size="small" disabled={!item.badgesAvailable?.length} checked={!!item.categoryChips?.length} onChange={() => toggleBadge(item.id)} />
                       </span>
                     </Tooltip>
                   </TableCell>
@@ -1371,15 +1524,20 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
 // Small corner badge for Sound Alike / Look Alike — matches the Inventory
 // badge exactly: sharp corners, real icon (not emoji), not a pill.
 function CategoryBadge({ category, label, fontSize = 10 }) {
-  const Icon = category === "Sound Alike" ? HearingIcon : category === "Look Alike" ? VisibilityIcon : null;
+  const Icon = category === "Sound Alike" ? HearingIcon : category === "Look Alike" ? VisibilityIcon : category === "High Alert" || category === "Hazardous" ? WarningAmberIcon : null;
+  // Colours/shape come from CATEGORY_STYLE — the exact same object used for
+  // the medicine-list badges below — so this corner badge always looks
+  // identical to "the badge in the table", per the approved reference.
+  const style = CATEGORY_STYLE[category] || { bg: "#ccc", text: "#000" };
   return (
     <Box sx={{
-      bgcolor: "#FFFF55", color: "#000", fontWeight: 700, fontSize: `${fontSize}px`,
-      borderRadius: "6px", px: 1, py: 0.3, display: "inline-flex", alignItems: "center", gap: 0.4,
+      bgcolor: style.bg, color: style.text, fontWeight: 700, fontSize: `${fontSize}px`,
+      borderRadius: "6px", px: 1, py: 0.35, display: "inline-flex", alignItems: "center", gap: 0.4,
+      whiteSpace: "nowrap",
       WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
     }}>
       {label}
-      {Icon && <Icon sx={{ fontSize: fontSize + 2 }} />}
+      {Icon && <Icon sx={{ fontSize: fontSize + 3 }} />}
     </Box>
   );
 }
@@ -1409,7 +1567,7 @@ function ScaledPreview({ dims, orientation, maxBox = 320, children }) {
   );
 }
 
-function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChip, qrMessageId }) {
+function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChips, qrMessageId }) {
   const initW = orientation === "horizontal" ? dims.width : dims.height;
   const initH = orientation === "horizontal" ? dims.height : dims.width;
 
@@ -1494,7 +1652,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
           >
             <Box sx={{ width: box.w * PXPERMM, height: box.h * PXPERMM, pointerEvents: "none", transform: `scale(${scale})`, transformOrigin: "top left" }}>
               <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance}
-                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChip={categoryChip} qrMessageId={qrMessageId} />
+                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={categoryChips} qrMessageId={qrMessageId} />
             </Box>
             <Box
               onMouseDown={startResize}
@@ -1520,11 +1678,15 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
   );
 }
 
-function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChip, qrMessageId }) {
+function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChips, qrMessageId }) {
   const Icon = template.icon;
   const width = orientation === "horizontal" ? dims.width : dims.height;
   const height = orientation === "horizontal" ? dims.height : dims.width;
-  const mainTitle = fields.name && labelText.name ? labelText.name : template.title;
+  // When the Medication Name field is on but empty (e.g. right after
+  // "Clear"), show a muted hint instead of silently falling back to the
+  // template's fixed title (which looked like a stale "EXPIRED" leftover).
+  const showNamePlaceholder = fields.name && !labelText.name.trim();
+  const mainTitle = showNamePlaceholder ? "" : (fields.name && labelText.name ? labelText.name : template.title);
 
   return (
     <Box
@@ -1546,6 +1708,9 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         justifyContent: "center",
         textAlign: appearance.align,
         px: 2, py: 1.2, gap: 0.5,
+        // Extra top padding when badges are present, so a row of corner
+        // badges never overlaps the medicine name text underneath them.
+        pt: categoryChips && categoryChips.length > 0 ? 3.2 : 1.2,
         overflow: "hidden",
         position: "relative",
         fontFamily: "Georgia, 'Times New Roman', Times, serif",
@@ -1555,7 +1720,7 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
       {fields.logo && logoDataUrl && (
         <Box sx={{
           position: "absolute",
-          left: `${(logoPos?.x ?? 82)}%`, top: `${(logoPos?.y ?? 80)}%`,
+          left: `${(logoPos?.x ?? 82)}%`, top: `${(logoPos?.y ?? 87)}%`,
           transform: "translate(-50%, -50%)",
           bgcolor: logoBg ? "#fff" : "transparent",
           px: logoBg ? 0.6 : 0, py: logoBg ? 0.3 : 0, lineHeight: 0,
@@ -1564,17 +1729,20 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           <img src={logoDataUrl} alt="logo" style={{ height: mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100), maxWidth: mmToPx(width) * 0.5, objectFit: "contain" }} />
         </Box>
       )}
-      {categoryChip && (
-        <Box sx={{ position: "absolute", top: 4, left: 4 }}>
-          <CategoryBadge category={categoryChip.category} label={categoryChip.label} />
+      {categoryChips && categoryChips.length > 0 && (
+        <Box sx={{ position: "absolute", top: 4, left: 4, right: 4, display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "4px", alignItems: "flex-start" }}>
+          {categoryChips.map((c) => <CategoryBadge key={c.category} category={c.category} label={c.label} />)}
         </Box>
       )}
       {fields.qr && (qrUrl?.trim() || labelText.code || labelText.name) && (
         <Box sx={{
           position: "absolute",
-          left: `${(qrPos?.x ?? 15)}%`, top: `${(qrPos?.y ?? 88)}%`,
+          left: `${(qrPos?.x ?? 15)}%`, top: `${(qrPos?.y ?? 75)}%`,
           transform: "translate(-50%, -50%)",
           bgcolor: "#fff", p: "3px", borderRadius: "3px", lineHeight: 0,
+          // Faded until a real link is attached, so it visually reads as a
+          // placeholder rather than a normal, finished QR code.
+          opacity: qrUrl?.trim() ? 1 : 0.32,
         }}>
           <QRCodeSVG
             value={qrUrl?.trim()
@@ -1586,19 +1754,28 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         </Box>
       )}
       {!fields.name && <Icon sx={{ color: appearance.accent, fontSize: `${appearance.fontSize + 14}px` }} />}
-      <Box sx={{
-        fontWeight: appearance.bold ? 800 : 600,
-        fontSize: `${appearance.fontSize + (fields.name ? 2 : 4)}px`,
-        lineHeight: 1.25,
-      }}>
-        {(fields.name && labelText.name
-          ? (labelText.name.includes("\n") ? labelText.name.split("\n").filter((l) => l.trim()) : splitMedicationText(labelText.name))
-          : mainTitle.split("\n")
-        ).map((line, i) => (
-          <Box key={i}>{line}</Box>
-        ))}
-      </Box>
-      {fields.status && labelText.status && (
+      {showNamePlaceholder ? (
+        <Box sx={{
+          bgcolor: BLUE, color: "#fff", fontWeight: 700, fontSize: `${Math.max(appearance.fontSize - 1, 11)}px`,
+          borderRadius: "10px", px: 2, py: 1, textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+        }}>
+          Select a medicine below ↓
+        </Box>
+      ) : (
+        <Box sx={{
+          fontWeight: appearance.bold ? 800 : 600,
+          fontSize: `${appearance.fontSize + (fields.name ? 2 : 4)}px`,
+          lineHeight: 1.25,
+        }}>
+          {(fields.name && labelText.name
+            ? (labelText.name.includes("\n") ? labelText.name.split("\n").filter((l) => l.trim()) : splitMedicationText(labelText.name))
+            : mainTitle.split("\n")
+          ).map((line, i) => (
+            <Box key={i}>{line}</Box>
+          ))}
+        </Box>
+      )}
+      {!showNamePlaceholder && fields.status && labelText.status && (
         <Box sx={{ color: appearance.accent, fontWeight: 700, fontSize: `${appearance.fontSize}px` }}>
           {labelText.status.toUpperCase()}
         </Box>
