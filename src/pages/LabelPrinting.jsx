@@ -50,8 +50,11 @@ import FormatAlignLeftIcon from "@mui/icons-material/FormatAlignLeft";
 import FormatAlignCenterIcon from "@mui/icons-material/FormatAlignCenter";
 import FormatAlignRightIcon from "@mui/icons-material/FormatAlignRight";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import HearingIcon from "@mui/icons-material/HearingOutlined";
-import VisibilityIcon from "@mui/icons-material/RemoveRedEyeOutlined";
+// Reverted to MUI's real, tested icons — the hand-drawn SVG paths I tried
+// rendered as an unrecognizable teardrop/blob instead of an ear/eye.
+import EarIcon from "@mui/icons-material/HearingOutlined";
+import EyeIcon from "@mui/icons-material/RemoveRedEyeOutlined";
+
 import { AlertCircle as ErrorOutline } from "lucide-react";
 import DoNotDisturbAltIcon from "@mui/icons-material/DoNotDisturbAlt";
 import GroupsIcon from "@mui/icons-material/Groups";
@@ -363,9 +366,9 @@ export default function LabelPrinting() {
   const [logoSize, setLogoSize] = useState(20);
   const [logoBg, setLogoBg] = useState(true); // white backing behind the logo, like the approved sticker
   const [qrCustomUrl, setQrCustomUrl] = useState("");
-  const [qrSize, setQrSize] = useState(40);
+  const [qrSize, setQrSize] = useState(35);
   // Opposite corner from the logo's default, so they never start out overlapping.
-  const [qrPos, setQrPos] = useState({ x: 15, y: 75 });
+  const [qrPos, setQrPos] = useState({ x: 20, y: 87 });
   const [categoryChips, setCategoryChips] = useState([]);
   const [showCategoryBadge, setShowCategoryBadge] = useState(true);
   // Tracks a manually-picked category (for medicines not tagged in the
@@ -374,6 +377,10 @@ export default function LabelPrinting() {
   const [manualCategoryBase, setManualCategoryBase] = useState(null);
   const [manualCategoryBadges, setManualCategoryBadges] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
+  // When printing from the review carousel, only the cards the user
+  // actually stepped through get sent to the printer — null means "print
+  // everything" (used by the plain single-label / non-batch print paths).
+  const [printSubsetIds, setPrintSubsetIds] = useState(null);
   // Whether the batch should print with one shared QR link instead of each
   // label's own — off by default so every medicine keeps its own link.
   const [batchUnifyQr, setBatchUnifyQr] = useState(false);
@@ -575,6 +582,7 @@ export default function LabelPrinting() {
       orientation,
       categoryChips,
       badgesAvailable: categoryChips,
+      categories: selectedMed ? [...new Set(selectedMed.categories || getDrugCategories(selectedMed.name, selectedMed.code))] : [],
       // Captured at add-time so each queued label keeps its OWN QR link —
       // it doesn't silently pick up whatever link is in the editor later.
       qrUrl: qrCustomUrl,
@@ -605,6 +613,7 @@ export default function LabelPrinting() {
         orientation,
         categoryChips: showCategoryBadge ? badgeChipDefs : [],
         badgesAvailable: badgeChipDefs,
+        categories,
         // Left blank on purpose — each label then auto-generates its OWN
         // scan link from its own medicine code/name, so a batch of many
         // different medicines never all points to one shared link.
@@ -621,7 +630,7 @@ export default function LabelPrinting() {
   }, [fields.logo, activeTab]);
 
   useEffect(() => {
-    const reset = () => setPrintReady(false);
+    const reset = () => { setPrintReady(false); setPrintSubsetIds(null); };
     window.addEventListener("afterprint", reset);
     return () => window.removeEventListener("afterprint", reset);
   }, []);
@@ -1216,8 +1225,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                             }}>
                               {cat}
                               {cat === "High Alert" && <WarningAmberIcon sx={{ fontSize: 14 }} />}
-                              {cat === "Sound Alike" && <HearingIcon sx={{ fontSize: 14 }} />}
-                              {cat === "Look Alike" && <VisibilityIcon sx={{ fontSize: 14 }} />}
+                              {cat === "Sound Alike" && <EarIcon sx={{ fontSize: 14 }} />}
+                              {cat === "Look Alike" && <EyeIcon sx={{ fontSize: 14 }} />}
                             </Box>
                           );
                         })}
@@ -1252,7 +1261,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                               labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
                               fields: { name: true, expiry: false, code: false, description: false, status: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
                               appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
-                              dims: { ...dims }, orientation, categoryChips: showCategoryBadge ? badgeChipDefs : [], badgesAvailable: badgeChipDefs,
+                              dims: { ...dims }, orientation, categoryChips: showCategoryBadge ? badgeChipDefs : [], badgesAvailable: badgeChipDefs, categories,
                               qrUrl: "", qrMessageId: "", previewName: med.name,
                             }]);
                           }} sx={{ bgcolor: "#F0FDF4", "&:hover": { bgcolor: "#DCFCE7" }, borderRadius: "8px" }}>
@@ -1435,13 +1444,14 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         batch={batch}
         setBatch={setBatch}
         removeFromBatch={removeFromBatch}
-        onConfirmPrint={() => { setReviewOpen(false); handlePrint(); }}
+        onConfirmPrint={(visitedIds) => { setPrintSubsetIds(visitedIds); setReviewOpen(false); handlePrint(); }}
         batchUnifyQr={batchUnifyQr}
         setBatchUnifyQr={setBatchUnifyQr}
         batchUnifiedQrUrl={batchUnifiedQrUrl}
         setBatchUnifiedQrUrl={setBatchUnifiedQrUrl}
         logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
-        qrSize={qrSize} qrPos={qrPos}
+        setLogoPos={setLogoPos} setLogoSize={setLogoSize} setLogoBg={setLogoBg}
+        qrSize={qrSize} qrPos={qrPos} setQrSize={setQrSize} setQrPos={setQrPos}
       />
 
       {/* ---------- Arrange on A4 dialog ---------- */}
@@ -1470,7 +1480,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
       {/* ---------- Hidden A4 print sheet (visible only when printing) ---------- */}
       <Box id="print-sheet">
         {!printReady ? null : batch.length > 0
-          ? batch.map((item) => (
+          ? (printSubsetIds ? batch.filter((it) => printSubsetIds.includes(it.id)) : batch).map((item) => (
               <LabelCard key={item.id} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
                 dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
                 qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={item.categoryChips}
@@ -1486,23 +1496,35 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
   );
 }
 
-function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, qrSize, qrPos }) {
+function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, setLogoPos, setLogoSize, setLogoBg, qrSize, qrPos, setQrSize, setQrPos }) {
   const [index, setIndex] = useState(0);
-  useEffect(() => { if (open) setIndex(0); }, [open]);
+  const [visited, setVisited] = useState(() => new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [showPosition, setShowPosition] = useState(false);
+  useEffect(() => { if (open) { setIndex(0); setVisited(new Set()); setConfirmOpen(false); } }, [open]);
   // Keep the current card in range if items get deleted out from under it.
   useEffect(() => { if (index > batch.length - 1) setIndex(Math.max(0, batch.length - 1)); }, [batch.length, index]);
+  // Whatever card is on screen counts as "reviewed".
+  useEffect(() => { if (batch[index]) setVisited((v) => new Set(v).add(batch[index].id)); }, [index, batch]);
 
-  function toggleBarcode(id) {
-    setBatch((b) => b.map((it) => it.id === id ? { ...it, fields: { ...it.fields, barcode: !it.fields.barcode } } : it));
-  }
   function toggleBadge(id) {
     setBatch((b) => b.map((it) => it.id === id ? { ...it, categoryChips: (it.categoryChips && it.categoryChips.length) ? [] : it.badgesAvailable || [] } : it));
   }
-  function bulkBarcode(on) {
-    setBatch((b) => b.map((it) => ({ ...it, fields: { ...it.fields, barcode: on } })));
+  function toggleQr(id) {
+    setBatch((b) => b.map((it) => it.id === id ? { ...it, fields: { ...it.fields, qr: !it.fields.qr } } : it));
   }
-  function bulkBadge(on) {
-    setBatch((b) => b.map((it) => ({ ...it, categoryChips: on ? (it.badgesAvailable || []) : [] })));
+  function setItemQrUrl(id, url) {
+    setBatch((b) => b.map((it) => it.id === id ? { ...it, qrUrl: url } : it));
+  }
+  function applyOptionToItem(id, opt) {
+    const style = CATEGORY_LABEL_STYLES[opt.base] || CATEGORY_LABEL_STYLES.Normal;
+    const badgeChipDefs = opt.badges.map((b) => CATEGORY_LABEL_STYLES[b].chip);
+    setBatch((b) => b.map((it) => it.id === id ? {
+      ...it,
+      appearance: { ...it.appearance, bg: style.bg, text: style.text, accent: style.accent },
+      categoryChips: badgeChipDefs,
+      badgesAvailable: badgeChipDefs,
+    } : it));
   }
   function deleteCurrent() {
     if (!current) return;
@@ -1510,7 +1532,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   }
 
   const current = batch[index];
-  const hasQrItems = batch.some((it) => it.fields.qr);
+  const currentOptions = current && current.categories && current.categories.length ? resolveCategoryLook(current.categories) : [];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -1540,38 +1562,95 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                       categoryChips={current.categoryChips} qrMessageId={batchUnifyQr ? "" : current.qrMessageId} />
                   </ScaledPreview>
                   <Typography sx={{ fontWeight: 700 }}>{current.previewName}</Typography>
-                  <Typography variant="caption" sx={{ color: "#9ca3af" }}>{index + 1} of {batch.length}</Typography>
+                  {current.labelText?.code && (
+                    <Typography variant="caption" sx={{ color: "#6b7280", fontFamily: "monospace" }}>{current.labelText.code}</Typography>
+                  )}
+                  <Typography variant="caption" sx={{ color: "#9ca3af" }}>{index + 1} of {batch.length} · {visited.size} reviewed</Typography>
                 </Box>
               )}
 
               <IconButton disabled={index >= batch.length - 1} onClick={() => setIndex((i) => Math.min(batch.length - 1, i + 1))}><ChevronRightIcon /></IconButton>
             </Box>
 
+            {/* Other suggested looks for this same medicine, so a different
+                card can be picked without leaving the review flow. */}
+            {current && currentOptions.length > 0 && (
+              <Box sx={{ display: "flex", gap: 1, justifyContent: "center", mb: 2, flexWrap: "wrap" }}>
+                {currentOptions.map((opt) => {
+                  const style = CATEGORY_LABEL_STYLES[opt.base] || CATEGORY_LABEL_STYLES.Normal;
+                  const isActive = current.appearance.bg === style.bg;
+                  return (
+                    <Tooltip key={opt.base} title={[opt.base, ...opt.badges].join(" + ")}>
+                      <Box onClick={() => applyOptionToItem(current.id, opt)}
+                        sx={{
+                          width: 34, height: 24, bgcolor: style.bg, cursor: "pointer",
+                          border: isActive ? `2px solid ${BLUE}` : "1.5px solid #000", borderRadius: "3px",
+                        }} />
+                    </Tooltip>
+                  );
+                })}
+              </Box>
+            )}
+
             {current && (
-              <Box sx={{ display: "flex", justifyContent: "center", gap: 3, mb: 2 }}>
-                <FormControlLabel
-                  control={<Checkbox checked={!!current.fields.barcode} onChange={() => toggleBarcode(current.id)} />}
-                  label="Barcode" />
-                <FormControlLabel
-                  control={<Checkbox disabled={!current.badgesAvailable?.length} checked={!!current.categoryChips?.length} onChange={() => toggleBadge(current.id)} />}
-                  label="Badge" />
-                <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={deleteCurrent} sx={{ textTransform: "none" }}>
-                  Remove this label
-                </Button>
+              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5, mb: 1 }}>
+                <Box sx={{ display: "flex", justifyContent: "center", gap: 3, flexWrap: "wrap" }}>
+                  <FormControlLabel
+                    control={<Checkbox checked={!!current.fields.qr} onChange={() => toggleQr(current.id)} />}
+                    label="QR code" />
+                  <FormControlLabel
+                    control={<Checkbox disabled={!current.badgesAvailable?.length} checked={!!current.categoryChips?.length} onChange={() => toggleBadge(current.id)} />}
+                    label="Badge" />
+                  <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={deleteCurrent} sx={{ textTransform: "none" }}>
+                    Remove this label
+                  </Button>
+                </Box>
+                {current.fields.qr && !batchUnifyQr && (
+                  <TextField size="small" fullWidth placeholder="Attach the link this QR should open — e.g. https://..."
+                    helperText={current.qrUrl?.trim() ? "" : "Nothing attached yet — shows faded on the label until you add one."}
+                    value={current.qrUrl || ""} onChange={(e) => setItemQrUrl(current.id, e.target.value)} />
+                )}
               </Box>
             )}
 
             <Divider sx={{ my: 2 }} />
 
-            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 1 }}>Apply to every label in this batch:</Typography>
-            <Box sx={{ display: "flex", gap: 1, mb: 2, flexWrap: "wrap", justifyContent: "center" }}>
-              <Button size="small" variant="outlined" onClick={() => bulkBarcode(true)} sx={{ textTransform: "none" }}>Barcode ON for all</Button>
-              <Button size="small" variant="outlined" onClick={() => bulkBarcode(false)} sx={{ textTransform: "none" }}>Barcode OFF for all</Button>
-              <Button size="small" variant="outlined" onClick={() => bulkBadge(true)} sx={{ textTransform: "none" }}>Badge ON for all</Button>
-              <Button size="small" variant="outlined" onClick={() => bulkBadge(false)} sx={{ textTransform: "none" }}>Badge OFF for all</Button>
-            </Box>
+            {/* Same logo/QR position & size controls as the main editor's
+                Position tab — available here too, applies to every label. */}
+            <Button size="small" onClick={() => setShowPosition((s) => !s)} sx={{ textTransform: "none", mb: showPosition ? 1 : 0 }}>
+              {showPosition ? "Hide" : "✎ Adjust logo / QR position & size"}
+            </Button>
+            {showPosition && (
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
+                {logoDataUrl && (
+                  <Box sx={{ bgcolor: "#EAF2FF", border: "1px solid #BFDBFE", borderRadius: 2, p: 1.5, flex: 1, minWidth: 180 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>Logo</Typography>
+                    <FormControlLabel sx={{ mb: 0.5 }}
+                      control={<Checkbox size="small" checked={logoBg} onChange={(e) => setLogoBg(e.target.checked)} />}
+                      label={<Typography variant="caption">White background</Typography>} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
+                    <Slider size="small" min={0} max={100} value={logoPos.x} onChange={(e, v) => setLogoPos({ ...logoPos, x: v })} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
+                    <Slider size="small" min={0} max={100} value={logoPos.y} onChange={(e, v) => setLogoPos({ ...logoPos, y: v })} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
+                    <Slider size="small" min={10} max={60} value={logoSize} onChange={(e, v) => setLogoSize(v)} />
+                  </Box>
+                )}
+                {batch.some((it) => it.fields.qr) && (
+                  <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 1.5, flex: 1, minWidth: 180 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>QR code</Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
+                    <Slider size="small" min={0} max={100} value={qrPos.x} onChange={(e, v) => setQrPos({ ...qrPos, x: v })} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
+                    <Slider size="small" min={0} max={100} value={qrPos.y} onChange={(e, v) => setQrPos({ ...qrPos, y: v })} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
+                    <Slider size="small" min={20} max={70} value={qrSize} onChange={(e, v) => setQrSize(v)} />
+                  </Box>
+                )}
+              </Box>
+            )}
 
-            {hasQrItems && (
+            {batch.some((it) => it.fields.qr) && (
               <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 1.5 }}>
                 <FormControlLabel
                   control={<Checkbox size="small" checked={batchUnifyQr} onChange={(e) => setBatchUnifyQr(e.target.checked)} />}
@@ -1591,11 +1670,32 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose} sx={{ textTransform: "none" }}>Back to editing</Button>
-        <Button variant="contained" startIcon={<PrintIcon />} disabled={batch.length === 0} onClick={onConfirmPrint}
+        <Button variant="contained" startIcon={<PrintIcon />} disabled={batch.length === 0} onClick={() => setConfirmOpen(true)}
           sx={{ textTransform: "none", fontWeight: 700, borderRadius: "8px", bgcolor: BLUE, "&:hover": { bgcolor: "#1E3A8A" } }}>
-          Print All ({batch.length})
+          Print reviewed ({visited.size})
         </Button>
       </DialogActions>
+
+      {/* Confirm before actually sending to the printer — easy to bump this
+          button by accident, and nothing here is undoable once printed. */}
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 700 }}>Print {visited.size} label{visited.size !== 1 ? "s" : ""}?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: "#6b7280" }}>
+            {visited.size < batch.length
+              ? `Only the ${visited.size} label${visited.size !== 1 ? "s" : ""} you reviewed will print — the other ${batch.length - visited.size} stay queued for later.`
+              : "This will send all queued labels to your printer."}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setConfirmOpen(false)} sx={{ textTransform: "none" }}>Cancel</Button>
+          <Button variant="contained" startIcon={<PrintIcon />}
+            onClick={() => { setConfirmOpen(false); onConfirmPrint(Array.from(visited)); }}
+            sx={{ textTransform: "none", fontWeight: 700, borderRadius: "8px", bgcolor: BLUE, "&:hover": { bgcolor: "#1E3A8A" } }}>
+            Yes, print
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }
@@ -1603,7 +1703,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
 // Small corner badge for Sound Alike / Look Alike — matches the Inventory
 // badge exactly: sharp corners, real icon (not emoji), not a pill.
 function CategoryBadge({ category, label, fontSize = 10 }) {
-  const Icon = category === "Sound Alike" ? HearingIcon : category === "Look Alike" ? VisibilityIcon : category === "High Alert" || category === "Hazardous" ? WarningAmberIcon : null;
+  const Icon = category === "Sound Alike" ? EarIcon : category === "Look Alike" ? EyeIcon : category === "High Alert" || category === "Hazardous" ? WarningAmberIcon : null;
   // Colours/shape come from CATEGORY_STYLE — the exact same object used for
   // the medicine-list badges below — so this corner badge always looks
   // identical to "the badge in the table", per the approved reference.
@@ -1802,7 +1902,7 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           left: `${(logoPos?.x ?? 82)}%`, top: `${(logoPos?.y ?? 87)}%`,
           transform: "translate(-50%, -50%)",
           bgcolor: logoBg ? "#fff" : "transparent",
-          px: logoBg ? 0.6 : 0, py: logoBg ? 0.3 : 0, lineHeight: 0,
+          px: logoBg ? 0.35 : 0, py: logoBg ? 0.15 : 0, lineHeight: 0,
           display: "flex", alignItems: "center",
         }}>
           <img src={logoDataUrl} alt="logo" style={{ height: mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100), maxWidth: mmToPx(width) * 0.5, objectFit: "contain" }} />
@@ -1816,7 +1916,7 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
       {fields.qr && (qrUrl?.trim() || labelText.code || labelText.name) && (
         <Box sx={{
           position: "absolute",
-          left: `${(qrPos?.x ?? 15)}%`, top: `${(qrPos?.y ?? 75)}%`,
+          left: `${(qrPos?.x ?? 20)}%`, top: `${(qrPos?.y ?? 87)}%`,
           transform: "translate(-50%, -50%)",
           bgcolor: "#fff", p: "3px", borderRadius: "3px", lineHeight: 0,
           // Faded until a real link is attached, so it visually reads as a
