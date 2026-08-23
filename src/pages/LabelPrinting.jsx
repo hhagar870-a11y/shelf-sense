@@ -351,7 +351,7 @@ export default function LabelPrinting() {
   const [sizePreset, setSizePreset] = useState("custom");
   const [customSize, setCustomSize] = useState(TEMPLATES[0].dims);
   const [copies, setCopies] = useState(12);
-  const [arrangement, setArrangement] = useState({ x: 10, y: 10 });
+  const [arrangement, setArrangement] = useState({ x: 0, y: 0 });
   const [arrangeOpen, setArrangeOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("content");
   // Which content field's settings panel is open — only one at a time,
@@ -368,6 +368,11 @@ export default function LabelPrinting() {
   const [qrPos, setQrPos] = useState({ x: 15, y: 75 });
   const [categoryChips, setCategoryChips] = useState([]);
   const [showCategoryBadge, setShowCategoryBadge] = useState(true);
+  // Tracks a manually-picked category (for medicines not tagged in the
+  // system yet) and any badges layered on top of it, independent of the
+  // auto-detected suggested-label options.
+  const [manualCategoryBase, setManualCategoryBase] = useState(null);
+  const [manualCategoryBadges, setManualCategoryBadges] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   // Whether the batch should print with one shared QR link instead of each
   // label's own — off by default so every medicine keeps its own link.
@@ -720,11 +725,11 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
           </Box>
 
           <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 4 }}>
-            <Box sx={{ width: { xs: "100%", md: 340 }, flexShrink: 0 }}>
+            <Box sx={{ width: { xs: "100%", md: 460 }, flexShrink: 0 }}>
               <Tabs
                 value={activeTab} onChange={(e, v) => setActiveTab(v)}
-                variant="scrollable" scrollButtons="auto"
-                sx={{ borderBottom: "1px solid #e5e7eb", mb: 2, minHeight: 40 }}
+                variant="standard"
+                sx={{ borderBottom: "1px solid #e5e7eb", mb: 2, minHeight: 40, "& .MuiTabs-flexContainer": { flexWrap: "wrap" } }}
               >
                 <Tab value="content" label="Content" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700 }} />
                 {(fields.logo || fields.qr) && (
@@ -1016,24 +1021,42 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                       </Typography>
                       <Box sx={{ display: "flex", gap: 0.8, flexWrap: "wrap", justifyContent: "center" }}>
                         {["High Alert", "Hazardous", "Look Alike", "Sound Alike"].map((cat) => {
-                          const manualOpt = cat === "Sound Alike" ? { base: "Normal", badges: ["Sound Alike"] } : { base: cat, badges: [] };
-                          const style = CATEGORY_LABEL_STYLES[cat === "Sound Alike" ? "Sound Alike" : cat];
-                          const isCurrent = options.some((o) => o.base === manualOpt.base) && cats.includes(cat);
+                          const style = CATEGORY_LABEL_STYLES[cat];
+                          const isSelected = manualCategoryBase === cat;
                           return (
                             <Tooltip key={cat} title={cat}>
-                              <Box onClick={() => applyCategoryStyle(manualOpt)}
+                              <Box onClick={() => {
+                                setManualCategoryBase(cat);
+                                const initialBadges = cat === "Sound Alike" ? ["Sound Alike"] : [];
+                                setManualCategoryBadges(initialBadges);
+                                applyCategoryStyle({ base: cat === "Sound Alike" ? "Normal" : cat, badges: initialBadges }, true);
+                              }}
                                 sx={{
-                                  width: 30, height: 22, bgcolor: style.bg, border: isCurrent ? `2px solid ${BLUE}` : "1.5px solid #000",
+                                  width: 30, height: 22, bgcolor: style.bg, border: isSelected ? `2px solid ${BLUE}` : "1.5px solid #000",
                                   borderRadius: "3px", cursor: "pointer",
                                 }} />
                             </Tooltip>
                           );
                         })}
                       </Box>
+                      {manualCategoryBase && (
+                        <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%" }}>
+                          {["Sound Alike", "Look Alike"].filter((b) => b !== manualCategoryBase).map((b) => (
+                            <FormControlLabel key={b} sx={{ mx: 0 }}
+                              control={<Checkbox size="small" checked={manualCategoryBadges.includes(b)}
+                                onChange={(e) => {
+                                  const next = e.target.checked ? [...manualCategoryBadges, b] : manualCategoryBadges.filter((x) => x !== b);
+                                  setManualCategoryBadges(next);
+                                  applyCategoryStyle({ base: manualCategoryBase === "Sound Alike" ? "Normal" : manualCategoryBase, badges: next }, true);
+                                }} />}
+                              label={<Typography variant="caption">+ "{b}" badge</Typography>} />
+                          ))}
+                        </Box>
+                      )}
 
                       {/* Link out to the category-checker tool on the Support page,
                           for whenever the auto-detected category is unclear. */}
-                      <Button size="small" variant="outlined" onClick={() => navigate("/support")}
+                      <Button size="small" variant="outlined" onClick={() => window.open("/support", "_blank")}
                         sx={{ mt: 1, textTransform: "none", fontWeight: 600, borderRadius: "8px", borderColor: BLUE, color: BLUE, width: "100%" }}>
                         Not sure of the category? Check it →
                       </Button>
@@ -1352,7 +1375,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
             Notice an issue or have a suggestion?{" "}
             <Link
               component="button"
-              onClick={() => navigate("/support")}
+              onClick={() => window.open("/support", "_blank")}
               sx={{
                 color: "#1976D2",
                 fontWeight: 600,
@@ -1417,6 +1440,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         setBatchUnifyQr={setBatchUnifyQr}
         batchUnifiedQrUrl={batchUnifiedQrUrl}
         setBatchUnifiedQrUrl={setBatchUnifiedQrUrl}
+        logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
+        qrSize={qrSize} qrPos={qrPos}
       />
 
       {/* ---------- Arrange on A4 dialog ---------- */}
@@ -1461,10 +1486,11 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
   );
 }
 
-function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl }) {
-  const [page, setPage] = useState(0);
-  const rowsPerPage = 15;
-  useEffect(() => { if (open) setPage(0); }, [open]);
+function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, qrSize, qrPos }) {
+  const [index, setIndex] = useState(0);
+  useEffect(() => { if (open) setIndex(0); }, [open]);
+  // Keep the current card in range if items get deleted out from under it.
+  useEffect(() => { if (index > batch.length - 1) setIndex(Math.max(0, batch.length - 1)); }, [batch.length, index]);
 
   function toggleBarcode(id) {
     setBatch((b) => b.map((it) => it.id === id ? { ...it, fields: { ...it.fields, barcode: !it.fields.barcode } } : it));
@@ -1478,98 +1504,89 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   function bulkBadge(on) {
     setBatch((b) => b.map((it) => ({ ...it, categoryChips: on ? (it.badgesAvailable || []) : [] })));
   }
+  function deleteCurrent() {
+    if (!current) return;
+    removeFromBatch(current.id);
+  }
 
-  const pageItems = batch.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const current = batch[index];
   const hasQrItems = batch.some((it) => it.fields.qr);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700 }}>
         Review & Print — {batch.length} label{batch.length !== 1 ? "s" : ""}
       </DialogTitle>
       <DialogContent dividers>
-        <Typography variant="body2" sx={{ color: "#6b7280", mb: 2 }}>
-          Quick check before printing — this is exactly what will come out of the printer.
-          Adjust the barcode or badge for any label, or apply a setting to all of them at once.
-        </Typography>
-
-        <Box sx={{ display: "flex", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
-          <Button size="small" variant="outlined" onClick={() => bulkBarcode(true)} sx={{ textTransform: "none" }}>Barcode ON for all</Button>
-          <Button size="small" variant="outlined" onClick={() => bulkBarcode(false)} sx={{ textTransform: "none" }}>Barcode OFF for all</Button>
-          <Button size="small" variant="outlined" onClick={() => bulkBadge(true)} sx={{ textTransform: "none" }}>Badge ON for all</Button>
-          <Button size="small" variant="outlined" onClick={() => bulkBadge(false)} sx={{ textTransform: "none" }}>Badge OFF for all</Button>
-        </Box>
-
-        {hasQrItems && (
-          <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 1.5, mb: 2 }}>
-            <FormControlLabel
-              control={<Checkbox size="small" checked={batchUnifyQr} onChange={(e) => setBatchUnifyQr(e.target.checked)} />}
-              label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Use one QR link for every label in this batch</Typography>} />
-            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", ml: 4, mb: batchUnifyQr ? 1 : 0 }}>
-              Off by default — each medicine keeps the link it was added with (or its own auto-generated one).
+        {batch.length === 0 ? (
+          <Typography sx={{ color: "#9ca3af", textAlign: "center", py: 4 }}>Nothing queued to print.</Typography>
+        ) : (
+          <>
+            <Typography variant="body2" sx={{ color: "#6b7280", mb: 2, textAlign: "center" }}>
+              One label at a time — exactly what will come out of the printer. Adjust it, then move to the next.
             </Typography>
-            {batchUnifyQr && (
-              <TextField size="small" fullWidth placeholder="https://... (applies to every QR code in this batch)"
-                sx={{ ml: 4, width: "calc(100% - 32px)" }}
-                value={batchUnifiedQrUrl} onChange={(e) => setBatchUnifiedQrUrl(e.target.value)} />
-            )}
-          </Box>
-        )}
 
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "#f9fafb" } }}>
-                <TableCell>#</TableCell>
-                <TableCell>Preview</TableCell>
-                <TableCell>Medication</TableCell>
-                <TableCell align="center">Barcode</TableCell>
-                <TableCell align="center">Badge</TableCell>
-                <TableCell align="right"></TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {pageItems.map((item, i) => (
-                <TableRow key={item.id} hover>
-                  <TableCell sx={{ color: "#9ca3af" }}>{page * rowsPerPage + i + 1}</TableCell>
-                  <TableCell>
-                    <Box sx={{
-                      width: 56, height: 32, bgcolor: item.appearance.bg, color: item.appearance.text,
-                      border: "2px solid #000", display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 8, fontWeight: 700, position: "relative", overflow: "hidden", px: 0.3,
-                    }}>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.previewName}</span>
-                      {item.categoryChips && item.categoryChips.length > 0 && (
-                        <Box sx={{ position: "absolute", bottom: 1, right: 1, bgcolor: "#FFFF55", width: 6, height: 6, borderRadius: "50%" }} />
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{item.previewName}</TableCell>
-                  <TableCell align="center">
-                    <Tooltip title={item.fields.barcode ? "Barcode on — click to remove" : "No barcode — click to add"}>
-                      <Checkbox size="small" checked={!!item.fields.barcode} onChange={() => toggleBarcode(item.id)} />
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell align="center">
-                    <Tooltip title={!item.badgesAvailable?.length ? "No secondary category for this medicine" : item.categoryChips?.length ? "Badge on — click to remove" : "Badge off — click to add"}>
-                      <span>
-                        <Checkbox size="small" disabled={!item.badgesAvailable?.length} checked={!!item.categoryChips?.length} onChange={() => toggleBadge(item.id)} />
-                      </span>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton size="small" onClick={() => removeFromBatch(item.id)}>
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        {batch.length > rowsPerPage && (
-          <TablePagination component="div" count={batch.length} page={page} onPageChange={(e, p) => setPage(p)}
-            rowsPerPage={rowsPerPage} rowsPerPageOptions={[rowsPerPage]} />
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2, mb: 2 }}>
+              <IconButton disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}><ChevronLeftIcon /></IconButton>
+
+              {current && (
+                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5 }}>
+                  <ScaledPreview maxBox={260} dims={current.dims} orientation={current.orientation}>
+                    <LabelCard template={{ icon: LocalOfferIcon, title: current.previewName, action: "" }}
+                      labelText={current.labelText} fields={current.fields} appearance={current.appearance}
+                      dims={current.dims} orientation={current.orientation}
+                      logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
+                      qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={qrSize} qrPos={qrPos}
+                      categoryChips={current.categoryChips} qrMessageId={batchUnifyQr ? "" : current.qrMessageId} />
+                  </ScaledPreview>
+                  <Typography sx={{ fontWeight: 700 }}>{current.previewName}</Typography>
+                  <Typography variant="caption" sx={{ color: "#9ca3af" }}>{index + 1} of {batch.length}</Typography>
+                </Box>
+              )}
+
+              <IconButton disabled={index >= batch.length - 1} onClick={() => setIndex((i) => Math.min(batch.length - 1, i + 1))}><ChevronRightIcon /></IconButton>
+            </Box>
+
+            {current && (
+              <Box sx={{ display: "flex", justifyContent: "center", gap: 3, mb: 2 }}>
+                <FormControlLabel
+                  control={<Checkbox checked={!!current.fields.barcode} onChange={() => toggleBarcode(current.id)} />}
+                  label="Barcode" />
+                <FormControlLabel
+                  control={<Checkbox disabled={!current.badgesAvailable?.length} checked={!!current.categoryChips?.length} onChange={() => toggleBadge(current.id)} />}
+                  label="Badge" />
+                <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={deleteCurrent} sx={{ textTransform: "none" }}>
+                  Remove this label
+                </Button>
+              </Box>
+            )}
+
+            <Divider sx={{ my: 2 }} />
+
+            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 1 }}>Apply to every label in this batch:</Typography>
+            <Box sx={{ display: "flex", gap: 1, mb: 2, flexWrap: "wrap", justifyContent: "center" }}>
+              <Button size="small" variant="outlined" onClick={() => bulkBarcode(true)} sx={{ textTransform: "none" }}>Barcode ON for all</Button>
+              <Button size="small" variant="outlined" onClick={() => bulkBarcode(false)} sx={{ textTransform: "none" }}>Barcode OFF for all</Button>
+              <Button size="small" variant="outlined" onClick={() => bulkBadge(true)} sx={{ textTransform: "none" }}>Badge ON for all</Button>
+              <Button size="small" variant="outlined" onClick={() => bulkBadge(false)} sx={{ textTransform: "none" }}>Badge OFF for all</Button>
+            </Box>
+
+            {hasQrItems && (
+              <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 1.5 }}>
+                <FormControlLabel
+                  control={<Checkbox size="small" checked={batchUnifyQr} onChange={(e) => setBatchUnifyQr(e.target.checked)} />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Use one QR link for every label in this batch</Typography>} />
+                <Typography variant="caption" sx={{ color: "#6b7280", display: "block", ml: 4, mb: batchUnifyQr ? 1 : 0 }}>
+                  Off by default — each medicine keeps the link it was added with (or its own auto-generated one).
+                </Typography>
+                {batchUnifyQr && (
+                  <TextField size="small" fullWidth placeholder="https://... (applies to every QR code in this batch)"
+                    sx={{ ml: 4, width: "calc(100% - 32px)" }}
+                    value={batchUnifiedQrUrl} onChange={(e) => setBatchUnifiedQrUrl(e.target.value)} />
+                )}
+              </Box>
+            )}
+          </>
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>

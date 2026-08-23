@@ -10,7 +10,7 @@ import QRLanding from "./pages/QRLanding";
 import Support from "./pages/Support";
 import AlertsCenter from "./pages/AlertsCenter";
 import ProtectedRoute from "./components/ProtectedRoute";
-import ClassificationSearch from "./pages/ClassificationSearch";
+import ClassificationSearch from "./pages/classificationsearch";
 
 function App() {
   return (

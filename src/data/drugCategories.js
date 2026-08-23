@@ -1,5 +1,6 @@
 // قاعدة بيانات التصنيفات الشاملة مدعومة بأكواد نيبكو (NUPCO Code) والكلمات المفتاحية لضمان الدقة المطلقة
 // تم فحصها وتصحيحها وترتيبها أبجديًا لتسهيل المراجعة السريعة
+// آخر تصحيح: إصلاح Paracetamol (كانت فارغة) + إضافة 7 أدوية/مواد كانت مفقودة
 
 export const drugCategoriesByCode = {
   // ===== A =====
@@ -357,7 +358,7 @@ export const drugCategories = [
   { keyword: "Clindamycin", categories: ["Look Alike", "Sound Alike"] },
   { keyword: "Clobazam", categories: ["High Alert"] },
   { keyword: "Clobetasol", categories: ["Look Alike"] },
-  { keyword: "Clonazepam", categories: ["High Alert", "Look Alike", "Sound Alike"] },
+  { keyword: "Clonazepam", categories: ["Hazardous", "High Alert", "Look Alike", "Sound Alike"] },
   { keyword: "Clonidine", categories: ["Sound Alike"] },
   { keyword: "Codeine", categories: ["High Alert"] },
   { keyword: "Colchicine", categories: ["Hazardous"] },
