@@ -1279,7 +1279,7 @@ mt: "-12px",
             alt="Hail Health Cluster"
 
             style={{
-              width: "248px",
+              width: "243px",
 
               height: "68px",
 

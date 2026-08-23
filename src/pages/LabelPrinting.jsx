@@ -40,6 +40,7 @@ import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import PrintIcon from "@mui/icons-material/Print";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import EditIcon from "@mui/icons-material/Edit";
+import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import PaletteIcon from "@mui/icons-material/Palette";
@@ -183,9 +184,13 @@ function resolveCategoryLook(cats) {
     return primaryOptions.map((base) => ({ base, badges: secondaryBadges }));
   }
   if (secondaryBadges.length > 0) {
-    // Only Sound/Look Alike present, nothing to choose between — that
-    // colour IS the base (matches the approved solid-yellow sticker).
-    return [{ base: secondaryBadges[0], badges: secondaryBadges.slice(1) }];
+    // Only "Look Alike" gets a solid yellow sticker of its own (matches the
+    // approved solid-yellow sticker). "Sound Alike" alone is a WHITE/Normal
+    // sticker with the "Sound Alike" badge on it — never a yellow sticker.
+    if (cats.includes("Look Alike")) {
+      return [{ base: "Look Alike", badges: secondaryBadges.filter((c) => c !== "Look Alike") }];
+    }
+    return [{ base: "Normal", badges: secondaryBadges }];
   }
   return [{ base: "Normal", badges: [] }];
 }
@@ -571,6 +576,10 @@ export default function LabelPrinting() {
       qrMessageId: qrMessageHtml.trim() ? qrMessageId : "",
       previewName: labelText.name || template.title,
     }]);
+    // Copies only applies to the single-label fallback print — once
+    // something's queued in the batch, reset it to 1 so it doesn't sit at
+    // a misleadingly high number that has nothing to do with the batch.
+    setCopies(1);
   }
 
   function removeFromBatch(id) {
@@ -641,7 +650,7 @@ export default function LabelPrinting() {
   return (
     <Container maxWidth="xl" sx={{ mt: 3, mb: 5 }}>
       <style>{`
-        @page { size: A4; margin: 0; }
+        @page { size: A4; margin: 6mm; }
         @media screen { #print-sheet { display: none; } }
         @media print {
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
@@ -930,7 +939,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               </Typography>
               <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", justifyContent: "center" }}>
                 <Button variant="outlined" startIcon={<OpenWithIcon />} onClick={() => setArrangeOpen(true)}
-                  sx={{ textTransform: "none", fontWeight: 600, borderRadius: "8px" }}>
+                  sx={{ textTransform: "none", fontWeight: 600, borderRadius: "8px", borderColor: BLUE, color: BLUE }}>
                   Arrange on A4
                 </Button>
                 <Button variant="outlined" onClick={addToBatch}
@@ -998,6 +1007,36 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                             }} />}
                           label={<Typography variant="caption">Show secondary badges</Typography>} />
                       )}
+
+                      {/* Manual override — always available for all 4 approved looks,
+                          in case a medicine hasn't been categorized in the system yet. */}
+                      <Divider flexItem sx={{ my: 0.5 }} />
+                      <Typography variant="caption" sx={{ color: "#6b7280", textAlign: "center" }}>
+                        Not categorized yet, or want a different one? Pick manually:
+                      </Typography>
+                      <Box sx={{ display: "flex", gap: 0.8, flexWrap: "wrap", justifyContent: "center" }}>
+                        {["High Alert", "Hazardous", "Look Alike", "Sound Alike"].map((cat) => {
+                          const manualOpt = cat === "Sound Alike" ? { base: "Normal", badges: ["Sound Alike"] } : { base: cat, badges: [] };
+                          const style = CATEGORY_LABEL_STYLES[cat === "Sound Alike" ? "Sound Alike" : cat];
+                          const isCurrent = options.some((o) => o.base === manualOpt.base) && cats.includes(cat);
+                          return (
+                            <Tooltip key={cat} title={cat}>
+                              <Box onClick={() => applyCategoryStyle(manualOpt)}
+                                sx={{
+                                  width: 30, height: 22, bgcolor: style.bg, border: isCurrent ? `2px solid ${BLUE}` : "1.5px solid #000",
+                                  borderRadius: "3px", cursor: "pointer",
+                                }} />
+                            </Tooltip>
+                          );
+                        })}
+                      </Box>
+
+                      {/* Link out to the category-checker tool on the Support page,
+                          for whenever the auto-detected category is unclear. */}
+                      <Button size="small" variant="outlined" onClick={() => navigate("/support")}
+                        sx={{ mt: 1, textTransform: "none", fontWeight: 600, borderRadius: "8px", borderColor: BLUE, color: BLUE, width: "100%" }}>
+                        Not sure of the category? Check it →
+                      </Button>
                     </>
                   );
                 })()}
@@ -1046,8 +1085,19 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <MenuItem value="Expired">Expired</MenuItem>
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 180, bgcolor: "#fff" }}>
-            <InputLabel>Category</InputLabel>
+          <FormControl size="small" sx={{
+            minWidth: 180,
+            "& .MuiOutlinedInput-root": {
+              bgcolor: categoryFilter !== "All" ? "#eff6ff" : "#fff",
+              "& fieldset": {
+                borderColor: categoryFilter !== "All" ? BLUE : "rgba(0,0,0,0.23)",
+                borderWidth: categoryFilter !== "All" ? "2px" : "1px",
+              },
+            },
+          }}>
+            <InputLabel sx={{ fontWeight: categoryFilter !== "All" ? 700 : 400, color: categoryFilter !== "All" ? BLUE : "inherit" }}>
+              Category {categoryFilter !== "All" && "●"}
+            </InputLabel>
             <Select value={categoryFilter} label="Category" onChange={(e) => { setCategoryFilter(e.target.value); setPage(0); }}>
               <MenuItem value="All">All</MenuItem>
               <MenuItem value="High Alert">High Alert</MenuItem>
@@ -1057,6 +1107,18 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <MenuItem value="None">No category</MenuItem>
             </Select>
           </FormControl>
+          {(categoryFilter !== "All" || statusFilter !== "All" || search.trim() !== "") && (
+            <Tooltip title="Reset filters & search">
+              <IconButton onClick={() => { setSearch(""); setCategoryFilter("All"); setStatusFilter("All"); setPage(0); }}
+                sx={{
+                  bgcolor: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: "50%", width: 40, height: 40, color: "#374151",
+                  transition: "all 0.2s ease",
+                  "&:hover": { bgcolor: "#e5e7eb", color: BLUE, transform: "rotate(180deg)" },
+                }}>
+                <RestartAltRoundedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           <Button variant="outlined" onClick={addAllFilteredToBatch} disabled={rows.length === 0}
             sx={{ textTransform: "none", fontWeight: 600, borderColor: BLUE, color: BLUE }}>
             + Add all {rows.length} to Batch
@@ -1532,7 +1594,7 @@ function CategoryBadge({ category, label, fontSize = 10 }) {
   return (
     <Box sx={{
       bgcolor: style.bg, color: style.text, fontWeight: 700, fontSize: `${fontSize}px`,
-      borderRadius: "6px", px: 1, py: 0.35, display: "inline-flex", alignItems: "center", gap: 0.4,
+      borderRadius: "2px", px: 1, py: 0.35, display: "inline-flex", alignItems: "center", gap: 0.4,
       whiteSpace: "nowrap",
       WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
     }}>
@@ -1710,7 +1772,7 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         px: 2, py: 1.2, gap: 0.5,
         // Extra top padding when badges are present, so a row of corner
         // badges never overlaps the medicine name text underneath them.
-        pt: categoryChips && categoryChips.length > 0 ? 3.2 : 1.2,
+        pt: categoryChips && categoryChips.length > 0 ? 2.2 : 1.2,
         overflow: "hidden",
         position: "relative",
         fontFamily: "Georgia, 'Times New Roman', Times, serif",

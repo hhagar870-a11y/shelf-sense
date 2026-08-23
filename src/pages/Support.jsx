@@ -1,4 +1,5 @@
 import React from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { Container, Paper, Box, Typography, Button, Divider, Link } from "@mui/material";
 import { Mail, MessageCircle, ExternalLink, GraduationCap, Code2, Sparkles, FolderDown, FileText, Search } from "lucide-react";
 
@@ -248,12 +249,12 @@ export default function Support() {
 
       </Box>
 
-      {/* Standalone Card: Quick Classification Search Tool — separated from the resource list so it doesn't compete visually */}
+      {/* Standalone Card: Quick Classification Search Tool — reads live from the same
+          drugCategories.js used for automatic classification, so there is only ONE
+          source of truth. Uses react-router navigation instead of a raw <a> link. */}
       <Paper
-        component="a"
-        href="/classification-search.html"
-        target="_blank"
-        rel="noopener noreferrer"
+        component={RouterLink}
+        to="/classification-search"
         elevation={0}
         sx={{
           p: 3,
@@ -288,7 +289,7 @@ export default function Support() {
             Quick Classification Search Tool
           </Typography>
           <Typography variant="body2" sx={{ color: "#64748b", lineHeight: 1.5, mb: 0.5 }}>
-            Search across all 3 policy files (LASA, Hazardous, High-Alert) at once and see every classification a medication falls under.
+            Search directly from the system's live classification database and see every category a medication falls under.
           </Typography>
           <Typography variant="caption" sx={{ color: "#a855f7", fontWeight: 700, display: "block" }}>
             For quick reference only — always confirm against the official policy for critical decisions.

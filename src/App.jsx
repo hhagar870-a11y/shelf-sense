@@ -10,6 +10,7 @@ import QRLanding from "./pages/QRLanding";
 import Support from "./pages/Support";
 import AlertsCenter from "./pages/AlertsCenter";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ClassificationSearch from "./pages/ClassificationSearch";
 
 function App() {
   return (
@@ -76,7 +77,7 @@ function App() {
               </>
             }
           />
-
+<Route path="/classification-search" element={<ClassificationSearch />} />
           <Route
             path="/alerts"
             element={

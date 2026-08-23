@@ -10,9 +10,13 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  InputAdornment,
+  IconButton,
+  Link,
+  Divider
 } from "@mui/material";
-import { Mail, MessageCircle } from "lucide-react";
+import { Mail, MessageCircle, User, Lock, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { login } from "../../utils/auth";
 
@@ -25,6 +29,7 @@ function Login() {
   const [error, setError] = useState("");
 
   const [supportOpen, setSupportOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleEmailClick = () => {
     window.location.href = "mailto:hajarralhmaidi@gmail.com";
@@ -121,7 +126,7 @@ function Login() {
       src="/logo.png"
       alt="Hail Health Cluster"
       sx={{
-        width: 185,
+        width: 275,
         height: "auto",
 
         display: "block",
@@ -346,6 +351,15 @@ function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <User size={18} color="#9EAFB8" />
+                    </InputAdornment>
+                  )
+                }
+              }}
               sx={inputStyle}
             />
 
@@ -368,11 +382,35 @@ function Login() {
 
             <TextField
               fullWidth
-              type="password"
+              type={showPassword ? "text" : "password"}
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Lock size={18} color="#9EAFB8" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        edge="end"
+                        size="small"
+                      >
+                        {showPassword ? (
+                          <EyeOff size={18} color="#9EAFB8" />
+                        ) : (
+                          <Eye size={18} color="#9EAFB8" />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }
+              }}
               sx={inputStyle}
             />
 
@@ -391,41 +429,62 @@ function Login() {
             )}
 
             {/* Remember Me */}
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={rememberMe}
-                  onChange={(e) =>
-                    setRememberMe(e.target.checked)
-                  }
-                  sx={{
-                    p: 0.5,
-
-                    mr: 0.5,
-
-                    color: "#B5C8D2",
-
-                    "&.Mui-checked": {
-                      color: "#1385bf"
-                    }
-                  }}
-                />
-              }
-              label={
-                <Typography
-                  sx={{
-                    color: "#71858F",
-                    fontSize: 13
-                  }}
-                >
-                  Remember me
-                </Typography>
-              }
+            <Box
               sx={{
-                margin: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
                 mt: 1.5
               }}
-            />
+            >
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={rememberMe}
+                    onChange={(e) =>
+                      setRememberMe(e.target.checked)
+                    }
+                    sx={{
+                      p: 0.5,
+
+                      mr: 0.5,
+
+                      color: "#B5C8D2",
+
+                      "&.Mui-checked": {
+                        color: "#1385bf"
+                      }
+                    }}
+                  />
+                }
+                label={
+                  <Typography
+                    sx={{
+                      color: "#71858F",
+                      fontSize: 13
+                    }}
+                  >
+                    Remember me
+                  </Typography>
+                }
+                sx={{ margin: 0 }}
+              />
+
+              <Link
+                component="button"
+                type="button"
+                onClick={() => setSupportOpen(true)}
+                sx={{
+                  fontSize: 13,
+                  color: "#1385bf",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  "&:hover": { textDecoration: "underline" }
+                }}
+              >
+                Forgot password?
+              </Link>
+            </Box>
 
             {/* =================================================
                 SIGN IN
@@ -470,14 +529,14 @@ function Login() {
                 GOOGLE
             ================================================= */}
 
+            <Divider sx={{ my: 2.5, color: "#B3C0C6", fontSize: 12 }}>or</Divider>
+
             <Button
               fullWidth
               disabled
               variant="outlined"
               sx={{
                 height: 50,
-
-                mt: 2,
 
                 borderRadius: 1.8,
 
@@ -493,6 +552,8 @@ function Login() {
 
                 textTransform: "none",
 
+                gap: 1,
+
                 "&.Mui-disabled": {
                   borderColor: "#E0E9EE",
 
@@ -503,16 +564,14 @@ function Login() {
               }}
             >
               <Box
-                component="span"
-                sx={{
-                  fontSize: 15,
-
-                  fontWeight: 700,
-
-                  mr: 1
-                }}
+                component="svg"
+                viewBox="0 0 48 48"
+                sx={{ width: 17, height: 17, opacity: 0.55 }}
               >
-                G
+                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.9 32.6 29.4 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/>
+                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+                <path fill="#4CAF50" d="M24 44c5.3 0 10.2-2 13.9-5.4l-6.4-5.4C29.4 34.9 26.8 36 24 36c-5.4 0-9.9-3.4-11.5-8.2l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.9 2.6-2.7 4.8-5 6.2l6.4 5.4C39.6 37.5 44 31.4 44 24c0-1.3-.1-2.7-.4-3.5z"/>
               </Box>
 
               Continue with Google
