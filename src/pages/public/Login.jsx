@@ -126,7 +126,7 @@ function Login() {
       src="/logo.png"
       alt="Hail Health Cluster"
       sx={{
-        width: 275,
+        width: 250,
         height: "auto",
 
         display: "block",
