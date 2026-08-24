@@ -855,13 +855,13 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                           label={<Typography variant="body2">White background behind logo</Typography>} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
                         <Slider size="small" min={0} max={100} value={logoPos.x}
-                          onChange={(e, v) => setLogoPos({ ...logoPos, x: v })} sx={{ mb: 1 }} />
+                          onChangeCommitted={(e, v) => setLogoPos({ ...logoPos, x: v })} sx={{ mb: 1 }} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
                         <Slider size="small" min={0} max={100} value={logoPos.y}
-                          onChange={(e, v) => setLogoPos({ ...logoPos, y: v })} sx={{ mb: 1 }} />
+                          onChangeCommitted={(e, v) => setLogoPos({ ...logoPos, y: v })} sx={{ mb: 1 }} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
                         <Slider size="small" min={10} max={60} value={logoSize}
-                          onChange={(e, v) => setLogoSize(v)} />
+                          onChangeCommitted={(e, v) => setLogoSize(v)} />
                       </>
                     )}
                   </Box>
@@ -872,13 +872,13 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>QR code</Typography>
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
                     <Slider size="small" min={0} max={100} value={qrPos.x}
-                      onChange={(e, v) => setQrPos({ ...qrPos, x: v })} sx={{ mb: 1 }} />
+                      onChangeCommitted={(e, v) => setQrPos({ ...qrPos, x: v })} sx={{ mb: 1 }} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
                     <Slider size="small" min={0} max={100} value={qrPos.y}
-                      onChange={(e, v) => setQrPos({ ...qrPos, y: v })} sx={{ mb: 1 }} />
+                      onChangeCommitted={(e, v) => setQrPos({ ...qrPos, y: v })} sx={{ mb: 1 }} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
                     <Slider size="small" min={20} max={70} value={qrSize}
-                      onChange={(e, v) => setQrSize(v)} />
+                      onChangeCommitted={(e, v) => setQrSize(v)} />
                   </Box>
                 )}
 
@@ -1501,11 +1501,21 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   const [visited, setVisited] = useState(() => new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [showPosition, setShowPosition] = useState(false);
-  useEffect(() => { if (open) { setIndex(0); setVisited(new Set()); setConfirmOpen(false); } }, [open]);
+  useEffect(() => {
+    if (open) {
+      setIndex(0);
+      setConfirmOpen(false);
+      // Set (not reset-then-rely-on-the-other-effect) so the first card is
+      // marked reviewed immediately — if index was already 0 from a prior
+      // session, that setIndex(0) above is a no-op and the effect below
+      // (keyed on index) would never re-fire to add it back in.
+      setVisited(batch[0] ? new Set([batch[0].id]) : new Set());
+    }
+  }, [open]);
   // Keep the current card in range if items get deleted out from under it.
   useEffect(() => { if (index > batch.length - 1) setIndex(Math.max(0, batch.length - 1)); }, [batch.length, index]);
   // Whatever card is on screen counts as "reviewed".
-  useEffect(() => { if (batch[index]) setVisited((v) => new Set(v).add(batch[index].id)); }, [index, batch]);
+  useEffect(() => { if (open && batch[index]) setVisited((v) => new Set(v).add(batch[index].id)); }, [index, batch, open]);
 
   function toggleBadge(id) {
     setBatch((b) => b.map((it) => it.id === id ? { ...it, categoryChips: (it.categoryChips && it.categoryChips.length) ? [] : it.badgesAvailable || [] } : it));
@@ -1629,22 +1639,22 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                       control={<Checkbox size="small" checked={logoBg} onChange={(e) => setLogoBg(e.target.checked)} />}
                       label={<Typography variant="caption">White background</Typography>} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
-                    <Slider size="small" min={0} max={100} value={logoPos.x} onChange={(e, v) => setLogoPos({ ...logoPos, x: v })} />
+                    <Slider size="small" min={0} max={100} value={logoPos.x} onChangeCommitted={(e, v) => setLogoPos({ ...logoPos, x: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
-                    <Slider size="small" min={0} max={100} value={logoPos.y} onChange={(e, v) => setLogoPos({ ...logoPos, y: v })} />
+                    <Slider size="small" min={0} max={100} value={logoPos.y} onChangeCommitted={(e, v) => setLogoPos({ ...logoPos, y: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
-                    <Slider size="small" min={10} max={60} value={logoSize} onChange={(e, v) => setLogoSize(v)} />
+                    <Slider size="small" min={10} max={60} value={logoSize} onChangeCommitted={(e, v) => setLogoSize(v)} />
                   </Box>
                 )}
                 {batch.some((it) => it.fields.qr) && (
                   <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 1.5, flex: 1, minWidth: 180 }}>
                     <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>QR code</Typography>
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
-                    <Slider size="small" min={0} max={100} value={qrPos.x} onChange={(e, v) => setQrPos({ ...qrPos, x: v })} />
+                    <Slider size="small" min={0} max={100} value={qrPos.x} onChangeCommitted={(e, v) => setQrPos({ ...qrPos, x: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
-                    <Slider size="small" min={0} max={100} value={qrPos.y} onChange={(e, v) => setQrPos({ ...qrPos, y: v })} />
+                    <Slider size="small" min={0} max={100} value={qrPos.y} onChangeCommitted={(e, v) => setQrPos({ ...qrPos, y: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
-                    <Slider size="small" min={20} max={70} value={qrSize} onChange={(e, v) => setQrSize(v)} />
+                    <Slider size="small" min={20} max={70} value={qrSize} onChangeCommitted={(e, v) => setQrSize(v)} />
                   </Box>
                 )}
               </Box>
@@ -1806,6 +1816,20 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
     onConfirm({ width: Math.round(box.w), height: Math.round(box.h) }, { x: Math.round(box.x), y: Math.round(box.y) });
   }
 
+  // How many copies fit on the page at the current size/position vs. if
+  // rotated 90° from the top-left corner — lets the person pick whichever
+  // orientation wastes less paper instead of guessing.
+  function estimateCount(w, h, x, y) {
+    const cols = Math.max(1, Math.floor((PAGE_W - x) / w));
+    const rows = Math.max(1, Math.floor((PAGE_H - y) / h));
+    return cols * rows;
+  }
+  const currentCount = estimateCount(box.w, box.h, box.x, box.y);
+  const rotatedCount = estimateCount(box.h, box.w, 0, 0);
+  function applyPaperSaving() {
+    setBox(rotatedCount > currentCount ? { x: 0, y: 0, w: box.h, h: box.w } : { ...box, x: 0, y: 0 });
+  }
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1843,8 +1867,15 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
           </Box>
         </Box>
         <Typography variant="caption" sx={{ color: "#9ca3af", display: "block", textAlign: "center", mt: 1.5 }}>
-          {Math.round(box.w)}×{Math.round(box.h)}mm at ({Math.round(box.x)}, {Math.round(box.y)})mm from the top-left corner
+          {Math.round(box.w)}×{Math.round(box.h)}mm at ({Math.round(box.x)}, {Math.round(box.y)})mm from the top-left corner — fits ~{currentCount} per page this way
         </Typography>
+        {rotatedCount > currentCount && (
+          <Box sx={{ textAlign: "center", mt: 1 }}>
+            <Button size="small" variant="outlined" onClick={applyPaperSaving} sx={{ textTransform: "none", borderColor: "#16A34A", color: "#16A34A" }}>
+              🌱 Paper-saving: rotate to fit ~{rotatedCount} per page instead
+            </Button>
+          </Box>
+        )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 3 }}>
         <Button onClick={onClose} sx={{ textTransform: "none" }}>Cancel</Button>
