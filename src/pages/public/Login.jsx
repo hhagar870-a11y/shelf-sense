@@ -7,17 +7,14 @@ import {
   Checkbox,
   FormControlLabel,
   Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Popover,
   InputAdornment,
   IconButton,
   Link,
   Divider
 } from "@mui/material";
 import { Mail, MessageCircle, User, Lock, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { login } from "../../utils/auth";
 
 function Login() {
@@ -28,8 +25,34 @@ function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
 
-  const [supportOpen, setSupportOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // حالة الـ Popover الخاص بالدعم (يفتح بالهوفر ويتعطل إغلاقه السريع)
+  const [supportAnchor, setSupportAnchor] = useState(null);
+  const isSupportOpen = Boolean(supportAnchor);
+
+  const handleSupportOpen = (event) => {
+    setSupportAnchor(event.currentTarget);
+  };
+
+  const handleSupportClose = () => {
+    setSupportAnchor(null);
+  };
+
+  // العودة لصفحة Welcome فوراً عند الضغط على السهم الأسفل (ArrowDown)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        navigate("/");
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [navigate]);
 
   const handleEmailClick = () => {
     window.location.href = "mailto:hajarralhmaidi@gmail.com";
@@ -52,221 +75,57 @@ function Login() {
 
   return (
     <>
-    <Box
-      sx={{
-        width: "100%",
-        height: "100dvh",
-        minHeight: "620px",
-        display: "grid",
-        gridTemplateColumns: {
-          xs: "1fr",
-          md: "46% 54%"
-        },
-        backgroundColor: "#FFFFFF",
-        overflow: "hidden",
-
-        fontFamily: "Inter, Segoe UI, Arial, sans-serif",
-
-        "& *": {
-          fontFamily: "Inter, Segoe UI, Arial, sans-serif",
-          boxSizing: "border-box"
-        }
-      }}
-    >
-      {/* =====================================================
-    LEFT BRANDING
-===================================================== */}
-
-<Box
-  sx={{
-    display: { xs: "none", md: "flex" },
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-    overflow: "hidden",
-
-    backgroundColor: "#F1F9FC",
-    borderRight: "1px solid #E5EEF3"
-  }}
->
-  {/* Subtle background shape */}
-  <Box
-    sx={{
-      position: "absolute",
-      width: 520,
-      height: 520,
-      borderRadius: "50%",
-      backgroundColor: "#E8F5FA",
-      left: -280,
-      bottom: -300,
-      opacity: 0.55
-    }}
-  />
-
-  {/* BRANDING CONTENT */}
-  <Box
-    sx={{
-      position: "relative",
-      zIndex: 1,
-
-      width: "100%",
-      maxWidth: 500,
-
-      px: {
-        md: 5,
-        lg: 6
-      },
-
-      transform: "translateY(-25px)"
-    }}
-  >
-    {/* LOGO */}
-    <Box
-      component="img"
-      src="/logo.png"
-      alt="Hail Health Cluster"
-      sx={{
-        width: 250,
-        height: "auto",
-
-        display: "block",
-
-        objectFit: "contain",
-        objectPosition: "left center",
-
-        mb: 4
-      }}
-    />
-
-    {/* TITLE GROUP */}
-    <Box
-      sx={{
-        maxWidth: 440
-      }}
-    >
-      {/* Small label */}
-      <Typography
-        sx={{
-          color: "#1385bf",
-
-          fontSize: 11,
-
-          fontWeight: 700,
-
-          letterSpacing: "1.4px",
-
-          lineHeight: 1.4,
-
-          mb: 1.8
-        }}
-      >
-        PHARMACY INVENTORY SYSTEM
-      </Typography>
-
-      {/* Main Title */}
-      <Typography
-        sx={{
-          color: "#103F5A",
-
-          fontSize: {
-            md: 42,
-            lg: 46
-          },
-
-          fontWeight: 750,
-
-          lineHeight: 1.08,
-
-          letterSpacing: "-1.7px",
-
-          margin: 0
-        }}
-      >
-        Pharmacy
-        <br />
-        Inventory
-        <br />
-        Management
-      </Typography>
-
-      {/* Accent */}
       <Box
         sx={{
-          width: 52,
-          height: 4,
-
-          borderRadius: 10,
-
-          backgroundColor: "#1385bf",
-
-          mt: 2.8,
-          mb: 2.8
-        }}
-      />
-
-      {/* Description */}
-      <Typography
-        sx={{
-          color: "#607D8B",
-
-          fontSize: 14,
-
-          fontWeight: 400,
-
-          lineHeight: 1.7,
-
-          maxWidth: 430,
-
-          margin: 0
-        }}
-      >
-        Manage pharmacy inventory, monitor stock levels,
-        and track medication expiry dates efficiently.
-      </Typography>
-    </Box>
-  </Box>
-</Box>
-      {/* =====================================================
-          LOGIN SIDE
-      ===================================================== */}
-
-      <Box
-        sx={{
+          width: "100vw",
+          height: "100vh",
+          maxHeight: "100vh",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-
-          px: {
-            xs: 3,
-            sm: 5,
-            md: 7,
-            lg: 9
+          backgroundColor: "#FFFFFF",
+          overflow: "hidden",
+          position: "fixed",
+          top: 0,
+          left: 0,
+          px: 3,
+          py: 4,
+          fontFamily: "Inter, Segoe UI, Arial, sans-serif",
+          
+          animation: "fadeInSlide 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+          "@keyframes fadeInSlide": {
+            "0%": {
+              opacity: 0,
+              transform: "translateY(20px)"
+            },
+            "100%": {
+              opacity: 1,
+              transform: "translateY(0)"
+            }
           },
 
-          py: 4,
-
-          backgroundColor: "#FFFFFF",
-
-          overflowY: "auto"
+          "& *": {
+            fontFamily: "Inter, Segoe UI, Arial, sans-serif",
+            boxSizing: "border-box"
+          }
         }}
       >
         <Box
           sx={{
             width: "100%",
-            maxWidth: 470
+            maxWidth: 470,
+            backgroundColor: "#FFFFFF",
+            p: { xs: 3, sm: 5 },
+            borderRadius: 3,
+            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.05)",
+            border: "1px solid #E5EEF3"
           }}
         >
-          {/* Mobile Logo */}
           <Box
             sx={{
-              display: {
-                xs: "flex",
-                md: "none"
-              },
-
+              display: "flex",
               justifyContent: "center",
-
-              mb: 5
+              mb: 4
             }}
           >
             <Box
@@ -274,33 +133,22 @@ function Login() {
               src="/logo.png"
               alt="Hail Health Cluster"
               sx={{
-                width: 170,
-                height: "auto"
+                width: 240,
+                height: "auto",
+                objectFit: "contain"
               }}
             />
           </Box>
 
-          {/* =================================================
-              HEADER
-          ================================================= */}
-
-          <Box sx={{ mb: 4 }}>
+          <Box sx={{ mb: 4, textAlign: "center" }}>
             <Typography
               sx={{
-                color: "#1385bf",
-
-                fontSize: {
-                  xs: 28,
-                  md: 32
-                },
-
-                fontWeight: 750,
-
-                letterSpacing: "-1px",
-
+                color: "#052f46",
+                fontSize: { xs: 26, md: 32 },
+                fontWeight: 300,
+                letterSpacing: "-0.5px",
                 lineHeight: 1.2,
-
-                mb: 1.2
+                mb: 1
               }}
             >
               Sign in to your account
@@ -309,36 +157,23 @@ function Login() {
             <Typography
               sx={{
                 color: "#718893",
-
                 fontSize: 13.5,
-
-                lineHeight: 1.6,
-
-                maxWidth: 420
+                lineHeight: 1.6
               }}
             >
-              Enter your credentials to access the pharmacy
-              inventory system.
+              Enter your credentials to access the pharmacy inventory system.
             </Typography>
           </Box>
-
-          {/* =================================================
-              FORM
-          ================================================= */}
 
           <Box
             component="form"
             onSubmit={handleSignIn}
           >
-            {/* Username */}
             <Typography
               sx={{
-                color: "#1385bf",
-
+                color: "#294C60",
                 fontSize: 13,
-
                 fontWeight: 700,
-
                 mb: 1
               }}
             >
@@ -363,17 +198,12 @@ function Login() {
               sx={inputStyle}
             />
 
-            {/* Password */}
             <Typography
               sx={{
                 color: "#294C60",
-
                 fontSize: 13,
-
                 fontWeight: 700,
-
                 mt: 2.5,
-
                 mb: 1
               }}
             >
@@ -414,7 +244,6 @@ function Login() {
               sx={inputStyle}
             />
 
-            {/* Error */}
             {error && (
               <Alert
                 severity="error"
@@ -428,7 +257,6 @@ function Login() {
               </Alert>
             )}
 
-            {/* Remember Me */}
             <Box
               sx={{
                 display: "flex",
@@ -446,11 +274,8 @@ function Login() {
                     }
                     sx={{
                       p: 0.5,
-
                       mr: 0.5,
-
                       color: "#B5C8D2",
-
                       "&.Mui-checked": {
                         color: "#1385bf"
                       }
@@ -470,14 +295,15 @@ function Login() {
                 sx={{ margin: 0 }}
               />
 
+              {/* Forgot password تتفعل بالقائمة المنسدلة عند مرور الماوس */}
               <Link
-                component="button"
-                type="button"
-                onClick={() => setSupportOpen(true)}
+                component="span"
+                onMouseEnter={handleSupportOpen}
                 sx={{
                   fontSize: 13,
                   color: "#1385bf",
                   fontWeight: 600,
+                  cursor: "pointer",
                   textDecoration: "none",
                   "&:hover": { textDecoration: "underline" }
                 }}
@@ -486,48 +312,28 @@ function Login() {
               </Link>
             </Box>
 
-            {/* =================================================
-                SIGN IN
-            ================================================= */}
-
             <Button
               fullWidth
               type="submit"
               variant="contained"
               sx={{
                 height: 54,
-
                 mt: 2.5,
-
                 borderRadius: 1.8,
-
                 backgroundColor: "#1385bf",
-
                 color: "#FFFFFF",
-
                 fontSize: 14,
-
                 fontWeight: 700,
-
                 textTransform: "none",
-
-                boxShadow:
-                  "0 7px 18px rgba(22,139,197,0.16)",
-
+                boxShadow: "0 7px 18px rgba(22,139,197,0.16)",
                 "&:hover": {
                   backgroundColor: "#117EAF",
-
-                  boxShadow:
-                    "0 9px 22px rgba(22,139,197,0.20)"
+                  boxShadow: "0 9px 22px rgba(22,139,197,0.20)"
                 }
               }}
             >
               Sign In
             </Button>
-
-            {/* =================================================
-                GOOGLE
-            ================================================= */}
 
             <Divider sx={{ my: 2.5, color: "#B3C0C6", fontSize: 12 }}>or</Divider>
 
@@ -537,28 +343,17 @@ function Login() {
               variant="outlined"
               sx={{
                 height: 50,
-
                 borderRadius: 1.8,
-
                 borderColor: "#E0E9EE",
-
                 backgroundColor: "#FFFFFF",
-
                 color: "#9EAFB7",
-
                 fontSize: 13,
-
                 fontWeight: 600,
-
                 textTransform: "none",
-
                 gap: 1,
-
                 "&.Mui-disabled": {
                   borderColor: "#E0E9EE",
-
                   backgroundColor: "#FFFFFF",
-
                   color: "#9EAFB7"
                 }
               }}
@@ -580,11 +375,8 @@ function Login() {
             <Typography
               sx={{
                 textAlign: "center",
-
                 color: "#A7B5BC",
-
                 fontSize: 10.5,
-
                 mt: 1
               }}
             >
@@ -592,41 +384,29 @@ function Login() {
             </Typography>
           </Box>
 
-          {/* =================================================
-              SUPPORT
-          ================================================= */}
-
           <Box
             sx={{
-              mt: 5,
-
+              mt: 4,
               pt: 2.5,
-
-              borderTop:
-                "1px solid #EDF1F3",
-
+              borderTop: "1px solid #EDF1F3",
               textAlign: "center"
             }}
           >
             <Typography
               sx={{
                 color: "#82949D",
-
                 fontSize: 12.5
               }}
             >
               Need assistance?{" "}
-
+              {/* Contact Support تتفعل بالقائمة المنسدلة عند مرور الماوس */}
               <Box
                 component="span"
-                onClick={() => setSupportOpen(true)}
+                onMouseEnter={handleSupportOpen}
                 sx={{
                   color: "#168BC5",
-
                   fontWeight: 700,
-
                   cursor: "pointer",
-
                   "&:hover": {
                     textDecoration: "underline"
                   }
@@ -639,9 +419,7 @@ function Login() {
             <Typography
               sx={{
                 color: "#B3C0C6",
-
                 fontSize: 10,
-
                 mt: 1
               }}
             >
@@ -650,51 +428,69 @@ function Login() {
           </Box>
         </Box>
       </Box>
-    </Box>
 
-    {/* =====================================================
-        CONTACT SUPPORT DIALOG (باللغة الإنجليزية وبدون ذكر IT)
-    ===================================================== */}
-
-    <Dialog
-      open={supportOpen}
-      onClose={() => setSupportOpen(false)}
-      maxWidth="xs"
-      fullWidth
-      PaperProps={{
-        sx: { borderRadius: 2 }
-      }}
-    >
-      <DialogTitle
-        sx={{
-          color: "#103F5A",
-          fontWeight: 700,
-          fontSize: 18
+      {/* =====================================================
+          POPOVER SUPPORT (تفتح بمجرد تمرير الماوس باحترافية)
+      ===================================================== */}
+      <Popover
+        open={isSupportOpen}
+        anchorEl={supportAnchor}
+        onClose={handleSupportClose}
+        anchorOrigin={{
+          vertical: "top",
+          horizontal: "center",
+        }}
+        transformOrigin={{
+          vertical: "bottom",
+          horizontal: "center",
+        }}
+        disableRestoreFocus
+        slotProps={{
+          paper: {
+            onMouseLeave: handleSupportClose,
+            sx: {
+              mb: 1.5,
+              p: 3,
+              width: 340,
+              borderRadius: "16px",
+              boxShadow: "0 15px 35px rgba(0,0,0,0.1)",
+              border: "1px solid #E2E8F0",
+              backgroundColor: "#FFFFFF",
+            }
+          }
         }}
       >
-        Contact Support
-      </DialogTitle>
-
-      <DialogContent>
-        <Typography sx={{ color: "#607D8B", fontSize: 13.5, mb: 2.5 }}>
-          For any sign-in issues or account assistance, please contact support via:
+        <Typography
+          sx={{
+            color: "#0F172A",
+            fontWeight: 700,
+            fontSize: 16,
+            mb: 0.8
+          }}
+        >
+          Contact Support
         </Typography>
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+        <Typography sx={{ color: "#64748B", fontSize: 12.5, mb: 2, lineHeight: 1.5 }}>
+          For any sign-in issues or account assistance, please contact via:
+        </Typography>
+
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.2 }}>
           <Button
             variant="contained"
-            startIcon={<Mail size={18} />}
+            startIcon={<Mail size={16} />}
             onClick={handleEmailClick}
             sx={{
               bgcolor: "#0284c7",
               color: "#ffffff",
               textTransform: "none",
-              borderRadius: 2.5,
-              py: 1.2,
+              borderRadius: "10px",
+              py: 1,
+              fontSize: 12.5,
               fontWeight: 600,
               boxShadow: "none",
               justifyContent: "flex-start",
-              px: 3,
+              px: 2.5,
               "&:hover": { bgcolor: "#0369a1", boxShadow: "none" }
             }}
           >
@@ -703,79 +499,57 @@ function Login() {
 
           <Button
             variant="outlined"
-            startIcon={<MessageCircle size={18} color="#16a34a" />}
+            startIcon={<MessageCircle size={16} color="#16a34a" />}
             onClick={handleWhatsappClick}
             sx={{
-              borderColor: "#cbd5e1",
+              borderColor: "#CBD5E1",
               color: "#334155",
               textTransform: "none",
-              borderRadius: 2.5,
-              py: 1.2,
+              borderRadius: "10px",
+              py: 1,
+              fontSize: 12.5,
               fontWeight: 600,
               justifyContent: "flex-start",
-              px: 3,
-              "&:hover": { borderColor: "#0284c7", bgcolor: "#f8fafc" }
+              px: 2.5,
+              "&:hover": { borderColor: "#0284c7", bgcolor: "#F8FAFC" }
             }}
           >
             Contact via WhatsApp
           </Button>
         </Box>
-      </DialogContent>
-
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button
-          onClick={() => setSupportOpen(false)}
-          sx={{
-            textTransform: "none",
-            fontWeight: 600,
-            color: "#1385bf"
-          }}
-        >
-          Close
-        </Button>
-      </DialogActions>
-    </Dialog>
+      </Popover>
     </>
   );
 }
 
-
-/* =========================================================
-   INPUT STYLE
-========================================================= */
-
 const inputStyle = {
   "& .MuiOutlinedInput-root": {
     height: 54,
-
     borderRadius: 1.8,
-
     backgroundColor: "#FFFFFF",
-
     "& fieldset": {
       borderColor: "#D8E5EB"
     },
-
     "&:hover fieldset": {
       borderColor: "#AFC7D3"
     },
-
     "&.Mui-focused fieldset": {
       borderColor: "#168BC5",
-
       borderWidth: 1.5
+    },
+    "& input:-webkit-autofill": {
+      WebkitBoxShadow: "0 0 0 1000px #FFFFFF inset",
+      WebkitTextFillColor: "#173F55",
+      transition: "background-color 5000s ease-in-out 0s"
     }
   },
-
   "& input": {
     fontSize: 14,
-
-    color: "#173F55"
+    color: "#173F55",
+    backgroundColor: "transparent"
   },
-
   "& input::placeholder": {
     color: "#9EAFB8",
-
     opacity: 1
   }
 };

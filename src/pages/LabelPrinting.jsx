@@ -600,12 +600,16 @@ export default function LabelPrinting() {
   }
 
   function addAllFilteredToBatch() {
-    const items = rows.map(({ med, categories }) => {
+    const items = rows.map(({ med, categories }, idx) => {
       const { base, badges } = resolveCategoryLook(categories)[0];
       const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
       const badgeChipDefs = badges.map((b) => CATEGORY_LABEL_STYLES[b].chip);
       return {
-        id: `b${Date.now()}_${med.id}`,
+        // idx guarantees uniqueness even when Date.now() is identical across
+        // this whole synchronous loop and/or the same med.id repeats (e.g.
+        // the same drug listed under more than one expiry date) — duplicate
+        // ids caused real React key collisions (misaligned/ghosted cards).
+        id: `b${Date.now()}_${idx}_${med.id}`,
         labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
         fields: { name: true, expiry: false, code: false, description: false, status: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
         appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
@@ -673,6 +677,8 @@ export default function LabelPrinting() {
           #print-sheet {
             display: flex !important;
             flex-wrap: wrap;
+            align-items: flex-start;
+            align-content: flex-start;
             gap: 4mm;
             position: absolute; top: ${arrangement.y}mm; left: ${arrangement.x}mm;
             width: calc(${PAGE_W}mm - ${arrangement.x}mm - 5mm);
@@ -854,14 +860,14 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                           control={<Checkbox size="small" checked={logoBg} onChange={(e) => setLogoBg(e.target.checked)} />}
                           label={<Typography variant="body2">White background behind logo</Typography>} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
-                        <Slider size="small" min={0} max={100} value={logoPos.x}
-                          onChangeCommitted={(e, v) => setLogoPos({ ...logoPos, x: v })} sx={{ mb: 1 }} />
+                        <DebouncedSlider size="small" min={0} max={100} value={logoPos.x}
+                          onCommit={(v) => setLogoPos({ ...logoPos, x: v })} sx={{ mb: 1 }} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
-                        <Slider size="small" min={0} max={100} value={logoPos.y}
-                          onChangeCommitted={(e, v) => setLogoPos({ ...logoPos, y: v })} sx={{ mb: 1 }} />
+                        <DebouncedSlider size="small" min={0} max={100} value={logoPos.y}
+                          onCommit={(v) => setLogoPos({ ...logoPos, y: v })} sx={{ mb: 1 }} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
-                        <Slider size="small" min={10} max={60} value={logoSize}
-                          onChangeCommitted={(e, v) => setLogoSize(v)} />
+                        <DebouncedSlider size="small" min={10} max={60} value={logoSize}
+                          onCommit={(v) => setLogoSize(v)} />
                       </>
                     )}
                   </Box>
@@ -871,14 +877,14 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                   <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 2 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>QR code</Typography>
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
-                    <Slider size="small" min={0} max={100} value={qrPos.x}
-                      onChangeCommitted={(e, v) => setQrPos({ ...qrPos, x: v })} sx={{ mb: 1 }} />
+                    <DebouncedSlider size="small" min={0} max={100} value={qrPos.x}
+                      onCommit={(v) => setQrPos({ ...qrPos, x: v })} sx={{ mb: 1 }} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
-                    <Slider size="small" min={0} max={100} value={qrPos.y}
-                      onChangeCommitted={(e, v) => setQrPos({ ...qrPos, y: v })} sx={{ mb: 1 }} />
+                    <DebouncedSlider size="small" min={0} max={100} value={qrPos.y}
+                      onCommit={(v) => setQrPos({ ...qrPos, y: v })} sx={{ mb: 1 }} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
-                    <Slider size="small" min={20} max={70} value={qrSize}
-                      onChangeCommitted={(e, v) => setQrSize(v)} />
+                    <DebouncedSlider size="small" min={20} max={70} value={qrSize}
+                      onCommit={(v) => setQrSize(v)} />
                   </Box>
                 )}
 
@@ -1257,7 +1263,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                             const style = CATEGORY_LABEL_STYLES[base] || CATEGORY_LABEL_STYLES.Normal;
                             const badgeChipDefs = badges.map((b) => CATEGORY_LABEL_STYLES[b].chip);
                             setBatch((b) => [...b, {
-                              id: `b${Date.now()}_${med.id}`,
+                              id: `b${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${med.id}`,
                               labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
                               fields: { name: true, expiry: false, code: false, description: false, status: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
                               appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
@@ -1562,7 +1568,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
               <IconButton disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}><ChevronLeftIcon /></IconButton>
 
               {current && (
-                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5 }}>
+                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5, width: 280, flexShrink: 0 }}>
                   <ScaledPreview maxBox={260} dims={current.dims} orientation={current.orientation}>
                     <LabelCard template={{ icon: LocalOfferIcon, title: current.previewName, action: "" }}
                       labelText={current.labelText} fields={current.fields} appearance={current.appearance}
@@ -1571,7 +1577,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                       qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={qrSize} qrPos={qrPos}
                       categoryChips={current.categoryChips} qrMessageId={batchUnifyQr ? "" : current.qrMessageId} />
                   </ScaledPreview>
-                  <Typography sx={{ fontWeight: 700 }}>{current.previewName}</Typography>
+                  <Typography sx={{ fontWeight: 700, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{current.previewName}</Typography>
                   {current.labelText?.code && (
                     <Typography variant="caption" sx={{ color: "#6b7280", fontFamily: "monospace" }}>{current.labelText.code}</Typography>
                   )}
@@ -1639,22 +1645,22 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                       control={<Checkbox size="small" checked={logoBg} onChange={(e) => setLogoBg(e.target.checked)} />}
                       label={<Typography variant="caption">White background</Typography>} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
-                    <Slider size="small" min={0} max={100} value={logoPos.x} onChangeCommitted={(e, v) => setLogoPos({ ...logoPos, x: v })} />
+                    <DebouncedSlider size="small" min={0} max={100} value={logoPos.x} onCommit={(v) => setLogoPos({ ...logoPos, x: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
-                    <Slider size="small" min={0} max={100} value={logoPos.y} onChangeCommitted={(e, v) => setLogoPos({ ...logoPos, y: v })} />
+                    <DebouncedSlider size="small" min={0} max={100} value={logoPos.y} onCommit={(v) => setLogoPos({ ...logoPos, y: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
-                    <Slider size="small" min={10} max={60} value={logoSize} onChangeCommitted={(e, v) => setLogoSize(v)} />
+                    <DebouncedSlider size="small" min={10} max={60} value={logoSize} onCommit={(v) => setLogoSize(v)} />
                   </Box>
                 )}
                 {batch.some((it) => it.fields.qr) && (
                   <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 1.5, flex: 1, minWidth: 180 }}>
                     <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>QR code</Typography>
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
-                    <Slider size="small" min={0} max={100} value={qrPos.x} onChangeCommitted={(e, v) => setQrPos({ ...qrPos, x: v })} />
+                    <DebouncedSlider size="small" min={0} max={100} value={qrPos.x} onCommit={(v) => setQrPos({ ...qrPos, x: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
-                    <Slider size="small" min={0} max={100} value={qrPos.y} onChangeCommitted={(e, v) => setQrPos({ ...qrPos, y: v })} />
+                    <DebouncedSlider size="small" min={0} max={100} value={qrPos.y} onCommit={(v) => setQrPos({ ...qrPos, y: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
-                    <Slider size="small" min={20} max={70} value={qrSize} onChangeCommitted={(e, v) => setQrSize(v)} />
+                    <DebouncedSlider size="small" min={20} max={70} value={qrSize} onCommit={(v) => setQrSize(v)} />
                   </Box>
                 )}
               </Box>
@@ -1728,6 +1734,20 @@ function CategoryBadge({ category, label, fontSize = 10 }) {
       {label}
       {Icon && <Icon sx={{ fontSize: fontSize + 3 }} />}
     </Box>
+  );
+}
+
+// Smooth local dragging without the lag of updating the whole app on every
+// pixel: onChange only touches this component's own state (cheap, instant),
+// and the expensive shared state (logo/QR position — which re-renders the
+// whole editor) only updates once, on release.
+function DebouncedSlider({ value, onCommit, ...props }) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => { setLocal(value); }, [value]);
+  return (
+    <Slider {...props} value={local}
+      onChange={(e, v) => setLocal(v)}
+      onChangeCommitted={(e, v) => onCommit(v)} />
   );
 }
 
@@ -1869,13 +1889,13 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
         <Typography variant="caption" sx={{ color: "#9ca3af", display: "block", textAlign: "center", mt: 1.5 }}>
           {Math.round(box.w)}×{Math.round(box.h)}mm at ({Math.round(box.x)}, {Math.round(box.y)})mm from the top-left corner — fits ~{currentCount} per page this way
         </Typography>
-        {rotatedCount > currentCount && (
-          <Box sx={{ textAlign: "center", mt: 1 }}>
-            <Button size="small" variant="outlined" onClick={applyPaperSaving} sx={{ textTransform: "none", borderColor: "#16A34A", color: "#16A34A" }}>
-              🌱 Paper-saving: rotate to fit ~{rotatedCount} per page instead
-            </Button>
-          </Box>
-        )}
+        <Box sx={{ textAlign: "center", mt: 1 }}>
+          <Button size="small" variant="outlined" onClick={applyPaperSaving}
+            disabled={rotatedCount <= currentCount}
+            sx={{ textTransform: "none", borderColor: "#16A34A", color: "#16A34A" }}>
+            🌱 Paper-saving: rotate to fill the page {rotatedCount > currentCount ? `(~${rotatedCount} per page instead of ~${currentCount})` : "— current layout is already the best fit"}
+          </Button>
+        </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 3 }}>
         <Button onClick={onClose} sx={{ textTransform: "none" }}>Cancel</Button>

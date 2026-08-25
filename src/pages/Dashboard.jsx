@@ -415,21 +415,22 @@ const SupervisorInfo = React.memo(function SupervisorInfo() {
         display: "flex",
         alignItems: "center",
         gap: 1.5,
-        minWidth: "260px",
-        cursor: "default",
-        borderRadius: "10px",
-        px: 1,
-        py: 0.5,
+        ml: { xs: 1, sm: 2, md: 3 }, // الإزاحة لليمين قليلاً
+        cursor: "pointer",
+        background: "transparent",
+        border: "none",
+        boxShadow: "none",
+        p: 0,
       }}
     >
-      <Box sx={{ position: "relative" }}>
+      <Box sx={{ position: "relative", display: "flex", alignItems: "center" }}>
         <Box
           sx={{
-            width: 46,
-            height: 46,
+            width: 42,
+            height: 42,
             borderRadius: "50%",
-            background: "linear-gradient(135deg, #EAF5FF, #F5FAFF)",
-            border: "1px solid #D9ECFA",
+            background: "#EAF4FF",
+            border: "1px solid #D2E7FF",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -437,16 +438,17 @@ const SupervisorInfo = React.memo(function SupervisorInfo() {
             flexShrink: 0,
           }}
         >
-          <AccountCircleIcon sx={{ fontSize: 34 }} />
+          {/* استخدام PersonIcon الموجودة مسبقاً في ملفك */}
+          <PersonIcon sx={{ fontSize: 24 }} />
         </Box>
 
         <Box
           sx={{
             position: "absolute",
-            bottom: -2,
-            right: -2,
-            width: 18,
-            height: 18,
+            bottom: -1,
+            right: -1,
+            width: 15,
+            height: 15,
             borderRadius: "50%",
             background: "#1976D2",
             border: "2px solid #FFFFFF",
@@ -455,20 +457,20 @@ const SupervisorInfo = React.memo(function SupervisorInfo() {
             justifyContent: "center",
           }}
         >
-          <VerifiedUserIcon sx={{ fontSize: 11, color: "#FFFFFF" }} />
+          <VerifiedUserIcon sx={{ fontSize: 9, color: "#FFFFFF" }} />
         </Box>
       </Box>
 
-      <Box>
+      <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <Typography
           sx={{
-            fontSize: "14px",
+            fontSize: "13.5px",
             color: "#172B4D",
             fontWeight: 700,
-            lineHeight: 1.3,
+            lineHeight: 1.25,
           }}
         >
-          Welcome back, Dr. Abdullah Alateeq
+          Welcome, Dr. Abdullah Alateeq
         </Typography>
 
         <Typography
@@ -476,11 +478,11 @@ const SupervisorInfo = React.memo(function SupervisorInfo() {
             fontSize: "11px",
             color: "#667085",
             fontWeight: 500,
-            lineHeight: 1.4,
-            mt: 0.2,
+            lineHeight: 1.3,
+            mt: 0.3,
           }}
         >
-          Pharmacy Supervisor · Full system access
+          Pharmacy Supervisor
         </Typography>
       </Box>
 
@@ -518,7 +520,7 @@ const SupervisorInfo = React.memo(function SupervisorInfo() {
                 height: 40,
                 borderRadius: "12px",
                 background: "#EFF6FF",
-                color: "#2563EB",
+                color: "#1976D2",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -559,7 +561,7 @@ const SupervisorInfo = React.memo(function SupervisorInfo() {
           </Box>
 
           <Box
-            onClick={() => navigate("/login")}
+            onClick={() => navigate("/")}
             sx={{
               display: "flex",
               alignItems: "center",
@@ -588,7 +590,6 @@ const SupervisorInfo = React.memo(function SupervisorInfo() {
 
   );
 });
-
 
 function Dashboard() {
 
@@ -1211,25 +1212,14 @@ function Dashboard() {
 
       <Box
         sx={{
-          height: "84px",
-
+          height: "80px",
           width: "100%",
-
           background: "#FFFFFF",
-
-          borderBottom:
-            "1px solid #EAECF0",
-
+          borderBottom: "1px solid #EAECF0",
           display: "flex",
           alignItems: "center",
-
-          px: {
-            xs: 2,
-            sm: 3,
-            md: 5,
-            lg: 6,
-          },
-
+          justifyContent: "space-between",
+          px: { xs: 2, sm: 3, md: 5, lg: 6 },
           position: "relative",
           zIndex: 30,
         }}
@@ -1240,8 +1230,8 @@ function Dashboard() {
             USER
         ================================================= */}
 
-    {/* USER SECTION */}
-    <SupervisorInfo />
+        {/* USER SECTION */}
+        <SupervisorInfo />
 
 
         {/* =================================================
@@ -1258,45 +1248,33 @@ function Dashboard() {
         <Box
           sx={{
             marginLeft: "auto",
-mt: "-12px",
+            mt: "-12px",
             display: "flex",
             alignItems: "center",
-
             justifyContent: "center",
-
             width: {
               xs: "130px",
               md: "400px",
             },
-
             overflow: "visible",
           }}
         >
 
           <img
             src="/logo.png"
-
             alt="Hail Health Cluster"
-
             style={{
-              width: "240px",
-
+              width: "230px",
               height: "68px",
-
               objectFit: "contain",
-
-              transform:
-                "scale(1.25)",
-
-              transformOrigin:
-                "center right",
+              transform: "scale(1.25)",
+              transformOrigin: "center right",
             }}
           />
 
         </Box>
 
       </Box>
-
 
       {/* =====================================================
           MAIN CONTENT

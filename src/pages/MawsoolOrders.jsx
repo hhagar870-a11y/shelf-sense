@@ -468,7 +468,7 @@ function MawsoolOrders() {
           </IconButton>
           <Chip 
             label={`${visibleMeds.length} Items Selected`} 
-            sx={{ bgcolor: "rgba(37, 99, 235, 0.9)", backdropFilter: "blur(4px)", color: "#fff", fontWeight: "bold", height: 40, fontSize: "0.95rem", boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }} 
+            sx={{ bgcolor: "rgba(20, 85, 226, 0.9)", backdropFilter: "blur(4px)", color: "#fff", fontWeight: "bold", height: 40, fontSize: "0.95rem", boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }} 
           />
         </Box>
 

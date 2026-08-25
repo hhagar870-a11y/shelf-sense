@@ -11,17 +11,17 @@ import Support from "./pages/Support";
 import AlertsCenter from "./pages/AlertsCenter";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ClassificationSearch from "./pages/classificationsearch";
+import Welcome from "./pages/Welcome";
 
 function App() {
   return (
     <>
       <Routes>
-        {/* Public - no login required */}
-        <Route path="/" element={<Login />} />
+        {/* Public - الواجهة الترحيبية الجديدة كصفحة رئيسية */}
+        <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<Login />} />
-        {/* QR landing stays public - it's meant to be opened by whoever
-            scans the physical QR code (e.g. a Mawsool driver), not
-            someone already signed into the dashboard */}
+        
+        {/* QR landing stays public */}
         <Route path="/qr-landing" element={<QRLanding />} />
 
         {/* Everything below requires the shared team login */}
@@ -77,7 +77,7 @@ function App() {
               </>
             }
           />
-<Route path="/classification-search" element={<ClassificationSearch />} />
+          <Route path="/classification-search" element={<ClassificationSearch />} />
           <Route
             path="/alerts"
             element={

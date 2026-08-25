@@ -1,4 +1,5 @@
 import { getDrugCategories } from "../data/getDrugCategories";
+import { Mail, MessageCircle, User, Lock, Eye, EyeOff, Upload, Download } from "lucide-react";
 import { db } from "../firebase";
 import {
   collection,
@@ -426,6 +427,7 @@ import {
   Alert,
   Badge,
   CircularProgress,
+    Menu,
 } from "@mui/material";
 
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -460,6 +462,7 @@ const [labelColor, setLabelColor] = useState("#8B5CF6");
 const [labelIcon, setLabelIcon] = useState("🏷️");
 const [selectedCategory, setSelectedCategory] = useState("All");
 const [selectedStatus, setSelectedStatus] = useState("All");
+const [excelAnchorEl, setExcelAnchorEl] = useState(null);
 
 // نقرأ فلتر الحالة اللي توديه بطاقات الداش بورد عبر الرابط (?filter=expired وغيرها)
 // ونطبّقه على نفس فلتر الحالة الموجود أصلاً بالصفحة، عشان الضغط على أي بطاقة
@@ -1831,14 +1834,16 @@ return (
 <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
 
 {/* =====================================================
-    INVENTORY HEADER — CLEAN & ORGANIZED
+    INVENTORY HEADER — EXACT BUTTON WIDTH MATCHING
 ===================================================== */}
-
 <Box
   sx={{
+    mt: 2,
     mb: 3,
     pb: 2.5,
     borderBottom: "1px solid #e5e7eb",
+    width: "100%",
+    px: 0,
   }}
 >
   {/* LOGO */}
@@ -1854,7 +1859,7 @@ return (
       src="/logo.png"
       alt="Hail Health Cluster"
       sx={{
-        width:350,
+        width: 350,
         height: "auto",
         display: "block",
         objectFit: "contain",
@@ -1889,25 +1894,11 @@ return (
           borderRadius: "14px",
           bgcolor: "#f8fafc",
           boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-
-          "& fieldset": {
-            borderColor: "#cbd5e1",
-          },
-
-          "&:hover fieldset": {
-            borderColor: "#94a3b8",
-          },
-
-          "&.Mui-focused fieldset": {
-            borderColor: "#2563eb",
-            borderWidth: "1.5px",
-          },
+          "& fieldset": { borderColor: "#cbd5e1" },
+          "&:hover fieldset": { borderColor: "#94a3b8" },
+          "&.Mui-focused fieldset": { borderColor: "#1976d2", borderWidth: "1.5px" },
         },
-
-        "& input": {
-          fontSize: "1rem",
-          py: 1.5,
-        },
+        "& input": { fontSize: "1rem", py: 1.5 },
       }}
     />
   </Box>
@@ -1919,7 +1910,8 @@ return (
       alignItems: "center",
       justifyContent: "space-between",
       width: "100%",
-      gap: 3,
+      gap: 2,
+      flexWrap: "wrap",
     }}
   >
     {/* LEFT — TITLE */}
@@ -1929,15 +1921,14 @@ return (
         alignItems: "center",
         gap: 1.5,
         flexShrink: 0,
+        pl: 0.5,
       }}
     >
       <IconButton
         onClick={() => navigate("/Dashboard")}
         sx={{
           bgcolor: "#f3f4f6",
-          "&:hover": {
-            bgcolor: "#e5e7eb",
-          },
+          "&:hover": { bgcolor: "#e5e7eb" },
           width: 42,
           height: 42,
         }}
@@ -1950,7 +1941,7 @@ return (
           width: 56,
           height: 56,
           borderRadius: "16px",
-          bgcolor: "#2563eb",
+          bgcolor: "#1976d2",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -1976,17 +1967,18 @@ return (
     <Box
       sx={{
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "flex-end",
-        gap: 1.5,
-        flexShrink: 0,
+        gap: 1.2,
+        flexWrap: "wrap",
+        pr: 0.5,
       }}
     >
+      {/* Add Medicine */}
       <Button
         variant="contained"
         onClick={() => {
           setEditIndex(null);
-
           setNewMedicine({
             name: "",
             quantity: "",
@@ -1998,7 +1990,6 @@ return (
             code: "",
             otherNames: [],
           });
-
           setCodeNotRecognized(false);
           setIsDualCodeEntry(false);
           setSecondMedicine(emptySecondMedicine());
@@ -2009,27 +2000,30 @@ return (
         sx={{
           borderRadius: "12px",
           textTransform: "none",
-          px: 2.5,
+          px: 2.2,
           py: 1,
+          height: 42,
           whiteSpace: "nowrap",
         }}
       >
         + Add Medicine
       </Button>
 
+      {/* Import Excel */}
       <Button
         component="label"
         variant="outlined"
         sx={{
           borderRadius: "12px",
           textTransform: "none",
-          px: 2,
+          px: 2.2,
           py: 1,
+          height: 42,
           whiteSpace: "nowrap",
+          minWidth: 165, // تثبيت عرض موحد ليتطابق مع زر الاكسبورت
         }}
       >
         Import Excel (Merge)
-
         <input
           hidden
           type="file"
@@ -2038,66 +2032,69 @@ return (
         />
       </Button>
 
-{/* EXPORT + LAST BACKUP */}
-<Box
-  sx={{
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 0.5,
-    minWidth: 150,
-  }}
->
-  <Button
-    variant="outlined"
-    color="success"
-    onClick={() => setExportDialogOpen(true)}
-    sx={{
-      borderRadius: "12px",
-      textTransform: "none",
-      px: 2,
-      py: 1,
-      whiteSpace: "nowrap",
-      width: "100%",
-    }}
-  >
-    Export Excel
-  </Button>
+      {/* EXPORT + LAST BACKUP WRAPPER (نفس العرض تماماً 165px) */}
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+          width: 165, // نفس عرض زر الإمبورت بالمللي
+        }}
+      >
+        <Button
+          variant="outlined"
+          color="success"
+          onClick={() => setExportDialogOpen(true)}
+          sx={{
+            borderRadius: "12px",
+            textTransform: "none",
+            py: 1,
+            height: 42,
+            whiteSpace: "nowrap",
+            width: "100%",
+          }}
+        >
+          Export Excel
+        </Button>
 
-  {/* Last Backup */}
-  <Box
-    sx={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 0.6,
-      mt: 0.2,
-    }}
-  >
-    <Box
-      component="span"
-      sx={{
-        width: 6,
-        height: 6,
-        borderRadius: "50%",
-        bgcolor: "#20ae54",
-        flexShrink: 0,
-      }}
-    />
+        {/* Last Backup */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 0.5,
+            position: "absolute",
+            top: "46px",
+            left: 0,
+            right: 0,
+            mt: 0.5,
+          }}
+        >
+          <Box
+            component="span"
+            sx={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              bgcolor: "#20ae54",
+              flexShrink: 0,
+            }}
+          />
+          <Typography
+            sx={{
+              fontSize: "10px",
+              color: "#94a3b8",
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Last backup: {formatBackupDate(lastBackupDate)}
+          </Typography>
+        </Box>
+      </Box>
 
-    <Typography
-      sx={{
-        fontSize: "10.5px",
-        color: "#94a3b8",
-        lineHeight: 1.2,
-        whiteSpace: "nowrap",
-      }}
-    >
-      Last backup: {formatBackupDate(lastBackupDate)}
-    </Typography>
-  </Box>
-</Box>
-
+      {/* Clear Inventory */}
       <Button
         variant="outlined"
         color="error"
@@ -2107,12 +2104,14 @@ return (
           textTransform: "none",
           px: 2,
           py: 1,
+          height: 42,
           whiteSpace: "nowrap",
         }}
       >
         Clear Inventory
       </Button>
 
+      {/* Trash */}
       <Badge badgeContent={trashItems.length} color="default" max={99}>
         <Button
           variant="outlined"
@@ -2123,6 +2122,7 @@ return (
             textTransform: "none",
             px: 2,
             py: 1,
+            height: 42,
             whiteSpace: "nowrap",
             color: "#475569",
             borderColor: "#cbd5e1",
