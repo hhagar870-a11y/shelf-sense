@@ -1,5 +1,5 @@
 import { getDrugCategories } from "../data/getDrugCategories";
-import { Mail, MessageCircle, User, Lock, Eye, EyeOff, Upload, Download } from "lucide-react";
+import { Mail, MessageCircle, User, Lock, Eye, EyeOff, Upload, Download, Ear, AlertTriangle } from "lucide-react";
 import { db } from "../firebase";
 import {
   collection,
@@ -388,8 +388,6 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import HearingIcon from "@mui/icons-material/Hearing";
 import RestoreFromTrashIcon from "@mui/icons-material/RestoreFromTrash";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
@@ -447,6 +445,31 @@ import { extractAllDates } from "../utils/dateParser";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import Stack from "@mui/material/Stack";
+
+// أيقونة "Look Alike" مرسومة يدوي عشان تطابق الستايل المعتمد بالضبط (شكل
+// العين الحبة + بؤبؤ فيه "لمعة" بالزاوية) — ما كانت موجودة جاهزة
+// بأي مكتبة أيقونات (lucide/MUI)، فبنيناها كـ SVG مخصص بنفس منطق باقي الأيقونات
+function LookAlikeEyeIcon({ size = 16, color = "#000", strokeWidth = 2.2, bgColor = "#FFD54F" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M2 12S5.5 5 12 5s10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="4.6" fill={color} />
+      <circle cx="13.6" cy="10.1" r="1.5" fill={bgColor} />
+    </svg>
+  );
+}
 
 
 function Inventory() {
@@ -2490,9 +2513,9 @@ return (
       }}
     >
       {category}
-      {category === "High Alert" && <WarningAmberIcon sx={{ fontSize: 14 }} />}
-      {category === "Sound Alike" && <HearingIcon sx={{ fontSize: 14 }} />}
-      {category === "Look Alike" && <VisibilityIcon sx={{ fontSize: 14 }} />}
+      {category === "High Alert" && <AlertTriangle size={14} color={badgeColor} strokeWidth={2.2} />}
+      {category === "Sound Alike" && <Ear size={14} color={badgeColor} strokeWidth={2.2} />}
+      {category === "Look Alike" && <LookAlikeEyeIcon size={17} color={badgeColor} strokeWidth={2.2} />}
     </Box>
   );
 })}

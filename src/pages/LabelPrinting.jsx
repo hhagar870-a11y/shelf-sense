@@ -369,6 +369,17 @@ export default function LabelPrinting() {
   const [qrSize, setQrSize] = useState(35);
   // Opposite corner from the logo's default, so they never start out overlapping.
   const [qrPos, setQrPos] = useState({ x: 20, y: 87 });
+  // Live preview values the on-screen card follows WHILE dragging a slider —
+  // the committed logoPos/qrPos (which re-renders the whole editor) only
+  // updates once, on release.
+  const [liveLogoPos, setLiveLogoPos] = useState(logoPos);
+  const [liveLogoSize, setLiveLogoSize] = useState(logoSize);
+  const [liveQrPos, setLiveQrPos] = useState(qrPos);
+  const [liveQrSize, setLiveQrSize] = useState(qrSize);
+  useEffect(() => setLiveLogoPos(logoPos), [logoPos]);
+  useEffect(() => setLiveLogoSize(logoSize), [logoSize]);
+  useEffect(() => setLiveQrPos(qrPos), [qrPos]);
+  useEffect(() => setLiveQrSize(qrSize), [qrSize]);
   const [categoryChips, setCategoryChips] = useState([]);
   const [showCategoryBadge, setShowCategoryBadge] = useState(true);
   // Tracks a manually-picked category (for medicines not tagged in the
@@ -861,13 +872,13 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                           label={<Typography variant="body2">White background behind logo</Typography>} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
                         <DebouncedSlider size="small" min={0} max={100} value={logoPos.x}
-                          onCommit={(v) => setLogoPos({ ...logoPos, x: v })} sx={{ mb: 1 }} />
+                          onLiveChange={(v) => setLiveLogoPos({ ...logoPos, x: v })} onCommit={(v) => setLogoPos({ ...logoPos, x: v })} sx={{ mb: 1 }} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
                         <DebouncedSlider size="small" min={0} max={100} value={logoPos.y}
-                          onCommit={(v) => setLogoPos({ ...logoPos, y: v })} sx={{ mb: 1 }} />
+                          onLiveChange={(v) => setLiveLogoPos({ ...logoPos, y: v })} onCommit={(v) => setLogoPos({ ...logoPos, y: v })} sx={{ mb: 1 }} />
                         <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
                         <DebouncedSlider size="small" min={10} max={60} value={logoSize}
-                          onCommit={(v) => setLogoSize(v)} />
+                          onLiveChange={setLiveLogoSize} onCommit={(v) => setLogoSize(v)} />
                       </>
                     )}
                   </Box>
@@ -878,13 +889,13 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>QR code</Typography>
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
                     <DebouncedSlider size="small" min={0} max={100} value={qrPos.x}
-                      onCommit={(v) => setQrPos({ ...qrPos, x: v })} sx={{ mb: 1 }} />
+                      onLiveChange={(v) => setLiveQrPos({ ...qrPos, x: v })} onCommit={(v) => setQrPos({ ...qrPos, x: v })} sx={{ mb: 1 }} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
                     <DebouncedSlider size="small" min={0} max={100} value={qrPos.y}
-                      onCommit={(v) => setQrPos({ ...qrPos, y: v })} sx={{ mb: 1 }} />
+                      onLiveChange={(v) => setLiveQrPos({ ...qrPos, y: v })} onCommit={(v) => setQrPos({ ...qrPos, y: v })} sx={{ mb: 1 }} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
                     <DebouncedSlider size="small" min={20} max={70} value={qrSize}
-                      onCommit={(v) => setQrSize(v)} />
+                      onLiveChange={setLiveQrSize} onCommit={(v) => setQrSize(v)} />
                   </Box>
                 )}
 
@@ -950,7 +961,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
@@ -1507,6 +1518,20 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   const [visited, setVisited] = useState(() => new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [showPosition, setShowPosition] = useState(false);
+  // Live preview values shown on the card WHILE dragging — the committed
+  // logoPos/qrPos (which re-renders the whole editor) only updates once, on
+  // release, but the on-screen card should still visibly follow the drag.
+  const [liveLogoPos, setLiveLogoPos] = useState(logoPos);
+  const [liveLogoSize, setLiveLogoSize] = useState(logoSize);
+  const [liveQrPos, setLiveQrPos] = useState(qrPos);
+  const [liveQrSize, setLiveQrSize] = useState(qrSize);
+  useEffect(() => setLiveLogoPos(logoPos), [logoPos]);
+  useEffect(() => setLiveLogoSize(logoSize), [logoSize]);
+  useEffect(() => setLiveQrPos(qrPos), [qrPos]);
+  useEffect(() => setLiveQrSize(qrSize), [qrSize]);
+  // Once the person turns QR on for one card, keep it on as they move
+  // forward through the rest — each card still gets its own blank link.
+  const [qrStickyOn, setQrStickyOn] = useState(false);
   useEffect(() => {
     if (open) {
       setIndex(0);
@@ -1516,18 +1541,34 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
       // session, that setIndex(0) above is a no-op and the effect below
       // (keyed on index) would never re-fire to add it back in.
       setVisited(batch[0] ? new Set([batch[0].id]) : new Set());
+      setQrStickyOn(false);
     }
   }, [open]);
   // Keep the current card in range if items get deleted out from under it.
   useEffect(() => { if (index > batch.length - 1) setIndex(Math.max(0, batch.length - 1)); }, [batch.length, index]);
   // Whatever card is on screen counts as "reviewed".
   useEffect(() => { if (open && batch[index]) setVisited((v) => new Set(v).add(batch[index].id)); }, [index, batch, open]);
+  // Carry the "QR enabled" preference forward as the person navigates —
+  // each card still keeps/gets its own blank link, only the checkbox state
+  // itself is sticky.
+  useEffect(() => {
+    if (!open) return;
+    const item = batch[index];
+    if (item && qrStickyOn && !item.fields.qr) {
+      setBatch((b) => b.map((it) => it.id === item.id ? { ...it, fields: { ...it.fields, qr: true } } : it));
+    }
+  }, [index, open]);
 
   function toggleBadge(id) {
     setBatch((b) => b.map((it) => it.id === id ? { ...it, categoryChips: (it.categoryChips && it.categoryChips.length) ? [] : it.badgesAvailable || [] } : it));
   }
   function toggleQr(id) {
-    setBatch((b) => b.map((it) => it.id === id ? { ...it, fields: { ...it.fields, qr: !it.fields.qr } } : it));
+    setBatch((b) => b.map((it) => {
+      if (it.id !== id) return it;
+      const next = !it.fields.qr;
+      setQrStickyOn(next); // remember the choice so it carries forward as you navigate
+      return { ...it, fields: { ...it.fields, qr: next } };
+    }));
   }
   function setItemQrUrl(id, url) {
     setBatch((b) => b.map((it) => it.id === id ? { ...it, qrUrl: url } : it));
@@ -1564,28 +1605,32 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
               One label at a time — exactly what will come out of the printer. Adjust it, then move to the next.
             </Typography>
 
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2, mb: 2 }}>
-              <IconButton disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}><ChevronLeftIcon /></IconButton>
+            {/* Sticky so the card stays in view while scrolling down to the
+                position/size controls below — no more losing track of it. */}
+            <Box sx={{ position: "sticky", top: 0, zIndex: 2, bgcolor: "#fff", pb: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2, mb: 2 }}>
+                <IconButton disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}><ChevronLeftIcon /></IconButton>
 
-              {current && (
-                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5, width: 280, flexShrink: 0 }}>
-                  <ScaledPreview maxBox={260} dims={current.dims} orientation={current.orientation}>
-                    <LabelCard template={{ icon: LocalOfferIcon, title: current.previewName, action: "" }}
-                      labelText={current.labelText} fields={current.fields} appearance={current.appearance}
-                      dims={current.dims} orientation={current.orientation}
-                      logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
-                      qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={qrSize} qrPos={qrPos}
-                      categoryChips={current.categoryChips} qrMessageId={batchUnifyQr ? "" : current.qrMessageId} />
-                  </ScaledPreview>
-                  <Typography sx={{ fontWeight: 700, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{current.previewName}</Typography>
-                  {current.labelText?.code && (
-                    <Typography variant="caption" sx={{ color: "#6b7280", fontFamily: "monospace" }}>{current.labelText.code}</Typography>
-                  )}
-                  <Typography variant="caption" sx={{ color: "#9ca3af" }}>{index + 1} of {batch.length} · {visited.size} reviewed</Typography>
-                </Box>
-              )}
+                {current && (
+                  <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5, width: 280, flexShrink: 0 }}>
+                    <ScaledPreview maxBox={200} dims={current.dims} orientation={current.orientation}>
+                      <LabelCard template={{ icon: LocalOfferIcon, title: current.previewName, action: "" }}
+                        labelText={current.labelText} fields={current.fields} appearance={current.appearance}
+                        dims={current.dims} orientation={current.orientation}
+                        logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg}
+                        qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={liveQrSize} qrPos={liveQrPos}
+                        categoryChips={current.categoryChips} qrMessageId={batchUnifyQr ? "" : current.qrMessageId} />
+                    </ScaledPreview>
+                    <Typography sx={{ fontWeight: 700, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{current.previewName}</Typography>
+                    {current.labelText?.code && (
+                      <Typography variant="caption" sx={{ color: "#6b7280", fontFamily: "monospace" }}>{current.labelText.code}</Typography>
+                    )}
+                    <Typography variant="caption" sx={{ color: "#9ca3af" }}>{index + 1} of {batch.length} · {visited.size} reviewed</Typography>
+                  </Box>
+                )}
 
-              <IconButton disabled={index >= batch.length - 1} onClick={() => setIndex((i) => Math.min(batch.length - 1, i + 1))}><ChevronRightIcon /></IconButton>
+                <IconButton disabled={index >= batch.length - 1} onClick={() => setIndex((i) => Math.min(batch.length - 1, i + 1))}><ChevronRightIcon /></IconButton>
+              </Box>
             </Box>
 
             {/* Other suggested looks for this same medicine, so a different
@@ -1645,22 +1690,28 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                       control={<Checkbox size="small" checked={logoBg} onChange={(e) => setLogoBg(e.target.checked)} />}
                       label={<Typography variant="caption">White background</Typography>} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
-                    <DebouncedSlider size="small" min={0} max={100} value={logoPos.x} onCommit={(v) => setLogoPos({ ...logoPos, x: v })} />
+                    <DebouncedSlider size="small" min={0} max={100} value={logoPos.x}
+                      onLiveChange={(v) => setLiveLogoPos({ ...logoPos, x: v })} onCommit={(v) => setLogoPos({ ...logoPos, x: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
-                    <DebouncedSlider size="small" min={0} max={100} value={logoPos.y} onCommit={(v) => setLogoPos({ ...logoPos, y: v })} />
+                    <DebouncedSlider size="small" min={0} max={100} value={logoPos.y}
+                      onLiveChange={(v) => setLiveLogoPos({ ...logoPos, y: v })} onCommit={(v) => setLogoPos({ ...logoPos, y: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
-                    <DebouncedSlider size="small" min={10} max={60} value={logoSize} onCommit={(v) => setLogoSize(v)} />
+                    <DebouncedSlider size="small" min={10} max={60} value={logoSize}
+                      onLiveChange={setLiveLogoSize} onCommit={(v) => setLogoSize(v)} />
                   </Box>
                 )}
                 {batch.some((it) => it.fields.qr) && (
                   <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 1.5, flex: 1, minWidth: 180 }}>
                     <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>QR code</Typography>
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
-                    <DebouncedSlider size="small" min={0} max={100} value={qrPos.x} onCommit={(v) => setQrPos({ ...qrPos, x: v })} />
+                    <DebouncedSlider size="small" min={0} max={100} value={qrPos.x}
+                      onLiveChange={(v) => setLiveQrPos({ ...qrPos, x: v })} onCommit={(v) => setQrPos({ ...qrPos, x: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
-                    <DebouncedSlider size="small" min={0} max={100} value={qrPos.y} onCommit={(v) => setQrPos({ ...qrPos, y: v })} />
+                    <DebouncedSlider size="small" min={0} max={100} value={qrPos.y}
+                      onLiveChange={(v) => setLiveQrPos({ ...qrPos, y: v })} onCommit={(v) => setQrPos({ ...qrPos, y: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
-                    <DebouncedSlider size="small" min={20} max={70} value={qrSize} onCommit={(v) => setQrSize(v)} />
+                    <DebouncedSlider size="small" min={20} max={70} value={qrSize}
+                      onLiveChange={setLiveQrSize} onCommit={(v) => setQrSize(v)} />
                   </Box>
                 )}
               </Box>
@@ -1738,15 +1789,16 @@ function CategoryBadge({ category, label, fontSize = 10 }) {
 }
 
 // Smooth local dragging without the lag of updating the whole app on every
-// pixel: onChange only touches this component's own state (cheap, instant),
-// and the expensive shared state (logo/QR position — which re-renders the
-// whole editor) only updates once, on release.
-function DebouncedSlider({ value, onCommit, ...props }) {
+// pixel: onChange only touches this component's own state (cheap, instant)
+// AND reports the live value up via onLiveChange so the preview card can
+// follow the drag in real time; the expensive shared state (which
+// re-renders the whole editor) only updates once, on release.
+function DebouncedSlider({ value, onCommit, onLiveChange, ...props }) {
   const [local, setLocal] = useState(value);
   useEffect(() => { setLocal(value); }, [value]);
   return (
     <Slider {...props} value={local}
-      onChange={(e, v) => setLocal(v)}
+      onChange={(e, v) => { setLocal(v); onLiveChange && onLiveChange(v); }}
       onChangeCommitted={(e, v) => onCommit(v)} />
   );
 }
@@ -1849,6 +1901,11 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
   function applyPaperSaving() {
     setBox(rotatedCount > currentCount ? { x: 0, y: 0, w: box.h, h: box.w } : { ...box, x: 0, y: 0 });
   }
+  // Plain manual rotate — independent of the paper-saving suggestion, always
+  // available, keeps the current top-left position.
+  function rotate90() {
+    setBox((b) => ({ ...b, w: b.h, h: b.w }));
+  }
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -1884,6 +1941,12 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
                 bgcolor: BLUE, borderRadius: "3px", border: "2px solid #fff", cursor: "nwse-resize",
               }}
             />
+            <Tooltip title="Rotate 90°">
+              <IconButton size="small" onClick={rotate90} onMouseDown={(e) => e.stopPropagation()}
+                sx={{ position: "absolute", left: -18, top: -18, bgcolor: "#fff", border: `1px solid ${BLUE}`, "&:hover": { bgcolor: "#EAF2FF" } }}>
+                <RestartAltRoundedIcon fontSize="small" sx={{ color: BLUE }} />
+              </IconButton>
+            </Tooltip>
           </Box>
         </Box>
         <Typography variant="caption" sx={{ color: "#9ca3af", display: "block", textAlign: "center", mt: 1.5 }}>
