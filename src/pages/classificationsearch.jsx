@@ -1,26 +1,14 @@
 import React, { useState, useMemo } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { Container, Paper, Box, Typography, TextField, Chip, InputAdornment, Button, Divider } from "@mui/material";
-import { Search as SearchIcon, Info, AlertTriangle } from "lucide-react";
+import { Search as SearchIcon, Info, AlertTriangle, ArrowLeft } from "lucide-react";
 import { drugCategories, availableLabels } from "../data/drugCategories";
 import { ministryMedicines } from "../data/ministryMedicines";
-
+import { POLICY_LOOK_ALIKE, POLICY_SOUND_ALIKE, POLICY_HAZARDOUS, POLICY_HIGH_ALERT } from "../data/policyDocuments";
 // خريطة سريعة: اسم التصنيف -> لونه وأيقونته (بالضبط نفس availableLabels عشان التوحيد)
 const labelMap = Object.fromEntries(availableLabels.map((l) => [l.name, l]));
 
-// كل تصنيف يرجع لأي ملف سياسة رسمي (نفس التقسيم الموجود فعليًا بالمستشفى)
-const POLICY_SOURCE = {
-  "Look Alike": "APP 20(02) — Look/Sound-Alike Medications (LASA)",
-  "Sound Alike": "APP 20(02) — Look/Sound-Alike Medications (LASA)",
-  "Hazardous": "MM-IPP-01(01) — Hazardous Medications & Pharmaceutical Chemicals",
-  "High Alert": "APP 18(02) — High-Alert Medications (HAM)",
-};
-
-// الأقسام الثلاثة اللي تُعرض بوضع "استعراض الملفات" — بالضبط بنفس تقسيم السياسات الأصلية
-const FILE_SECTIONS = [
-  { key: "LASA", title: "APP 20(02) — Look/Sound-Alike Medications", cats: ["Look Alike", "Sound Alike"] },
-  { key: "HAZ", title: "MM-IPP-01(01) — Hazardous Medications & Pharmaceutical Chemicals", cats: ["Hazardous"] },
-  { key: "HAM", title: "APP 18(02) — High-Alert Medications", cats: ["High Alert"] },
-];
+// (تعريفات الأقسام والمصادر صارت الآن مأخوذة مباشرة من ملف policyDocuments.js الحرفي)
 
 // قواعد عامة لأدوية لها "فئة كاملة" مذكورة بالسياسة كوصف عام بدل اسم منتج محدد
 // (مثال: البوليسي يكتب "All type of insulin" بدل ما يسرد كل ماركة). تُطبَّق على
@@ -129,16 +117,89 @@ export default function ClassificationSearch() {
   }, [query, ministryClassified]);
 
   const browseData = useMemo(() => {
-    return FILE_SECTIONS.map((section) => ({
-      ...section,
-      items: drugCategories
-        .filter((d) => d.categories.some((c) => section.cats.includes(c)))
-        .sort((a, b) => a.keyword.localeCompare(b.keyword)),
-    }));
+    return [
+      {
+        key: "LASA_LOOK",
+        title: "APP 20(02) — Look-Alike Medications List",
+        type: "pair",
+        items: POLICY_LOOK_ALIKE,
+      },
+      {
+        key: "LASA_SOUND",
+        title: "APP 20(02) — Sound-Alike Medications List (Confused Drug Name)",
+        type: "pair",
+        items: POLICY_SOUND_ALIKE,
+      },
+      {
+        key: "HAZ",
+        title: "MM-IPP-01(01) — Hazardous Medication and Pharmaceuticals Chemical List",
+        type: "grouped",
+        items: POLICY_HAZARDOUS,
+      },
+      {
+        key: "HAM",
+        title: "APP 18(02) — High Alert Medications List (HAM)",
+        type: "categorized",
+        items: POLICY_HIGH_ALERT,
+      },
+    ];
   }, []);
+
+  // بحث حرفي مباشر داخل نصوص السياسات الأصلية (منفصل تمامًا عن drugCategories.js)
+  const policyResults = useMemo(() => {
+    const qRaw = query.trim();
+    if (!qRaw) return [];
+    const tokens = tokensFromQuery(qRaw);
+    const matchText = (t) => {
+      const n = normalize(t);
+      return tokens.every((tok) => n.includes(tok));
+    };
+
+    const results = [];
+    for (const p of POLICY_LOOK_ALIKE) {
+      if (matchText(p.item1) || matchText(p.item2)) {
+        results.push({ source: "APP 20(02) — Look-Alike", text: `${p.item1}  ↔  ${p.item2}` });
+      }
+    }
+    for (const p of POLICY_SOUND_ALIKE) {
+      if (matchText(p.item1) || matchText(p.item2)) {
+        results.push({ source: "APP 20(02) — Sound-Alike", text: `${p.item1}  ↔  ${p.item2}` });
+      }
+    }
+    for (const h of POLICY_HAZARDOUS) {
+      if (matchText(h.name)) {
+        results.push({ source: `MM-IPP-01(01) — ${h.group}`, text: h.name });
+      }
+    }
+    for (const h of POLICY_HIGH_ALERT) {
+      if (matchText(h.name)) {
+        results.push({ source: `APP 18(02) — ${h.category}`, text: `${h.name}${h.form ? " — " + h.form : ""}` });
+      }
+    }
+    return results;
+  }, [query]);
+
 
   return (
     <Container maxWidth="md" sx={{ mt: 6, mb: 6 }}>
+      {/* Back link — fixes the "stuck with no way back" issue */}
+      <Button
+        component={RouterLink}
+        to="/support"
+        startIcon={<ArrowLeft size={16} />}
+        sx={{
+          textTransform: "none",
+          fontWeight: 600,
+          fontSize: 13,
+          color: "#64748b",
+          mb: 2,
+          px: 1,
+          "&:hover": { bgcolor: "#f1f5f9", color: "#0f172a" },
+        }}
+      >
+        Back to Support
+      </Button>
+
       {/* Header */}
       <Box sx={{ mb: 4, display: "flex", alignItems: "center", gap: 2.5 }}>
         <Box
@@ -211,6 +272,18 @@ export default function ClassificationSearch() {
           💊 Search Ministry Items
         </Button>
         <Button
+          onClick={() => setViewMode("policytext")}
+          sx={{
+            textTransform: "none", fontWeight: 700, fontSize: 13, borderRadius: 5, px: 2.2, flex: 1,
+            border: "1.5px solid #9333ea",
+            color: viewMode === "policytext" ? "#ffffff" : "#9333ea",
+            bgcolor: viewMode === "policytext" ? "#9333ea" : "transparent",
+            "&:hover": { bgcolor: "#9333ea", color: "#ffffff" },
+          }}
+        >
+          📜 Search Policy Text
+        </Button>
+        <Button
           onClick={() => setViewMode("browse")}
           sx={{
             textTransform: "none", fontWeight: 700, fontSize: 13, borderRadius: 5, px: 2.2, flex: 1,
@@ -224,13 +297,15 @@ export default function ClassificationSearch() {
         </Button>
       </Box>
 
-      {(viewMode === "search" || viewMode === "inventory") && (
+      {(viewMode === "search" || viewMode === "inventory" || viewMode === "policytext") && (
         <TextField
           fullWidth
           autoFocus
           placeholder={
             viewMode === "inventory"
               ? "Type a ministry-approved medication name or NUPCO code... e.g. Insulin Glargine"
+              : viewMode === "policytext"
+              ? "Search the literal text of the 3 policy files... e.g. Warfarin"
               : "Type a medication name... e.g. Warfarin"
           }
           value={query}
@@ -389,6 +464,40 @@ export default function ClassificationSearch() {
         </>
       )}
 
+      {viewMode === "policytext" && (
+        <>
+          <Typography variant="caption" sx={{ color: "#64748b", display: "block", mb: 2 }}>
+            {query ? `${policyResults.length} result(s) found directly in the literal policy text` : ""}
+          </Typography>
+
+          {!query && (
+            <Typography variant="body2" sx={{ textAlign: "center", color: "#94a3b8", py: 6 }}>
+              This searches the exact wording transcribed from the 3 official policy tables — no summarization.
+            </Typography>
+          )}
+
+          {query && policyResults.length === 0 && (
+            <Box sx={{ textAlign: "center", color: "#94a3b8", py: 6 }}>
+              <Typography sx={{ fontSize: 34, mb: 1 }}>🤷‍♀️</Typography>
+              <Typography variant="body2">Not found in the literal text of any of the 3 policy files.</Typography>
+            </Box>
+          )}
+
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1.2 }}>
+            {policyResults.map((r, idx) => (
+              <Paper key={idx} elevation={0}
+                sx={{ p: 2, borderRadius: 3, bgcolor: "#ffffff", border: "1px solid #e2e8f0" }}>
+                <Chip label={r.source} size="small"
+                  sx={{ bgcolor: "#f1f5f9", color: "#475569", fontWeight: 700, fontSize: 10.5, mb: 1 }} />
+                <Typography sx={{ fontWeight: 600, fontSize: 14, direction: "ltr", textAlign: "left" }}>
+                  {r.text}
+                </Typography>
+              </Paper>
+            ))}
+          </Box>
+        </>
+      )}
+
       {viewMode === "browse" && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {browseData.map((section) => (
@@ -397,28 +506,41 @@ export default function ClassificationSearch() {
                 {section.title}
               </Typography>
               <Typography variant="caption" sx={{ color: "#64748b", display: "block", mb: 1.5 }}>
-                {section.items.length} medications in this file
+                {section.items.length} entries — literal text, exact table order as in the PDF
               </Typography>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                 {section.items.map((item, idx) => (
-                  <Paper key={item.keyword} elevation={0}
+                  <Paper key={idx} elevation={0}
                     sx={{
                       p: 1.5, borderRadius: 2.5, bgcolor: idx % 2 === 0 ? "#ffffff" : "#f8fafc",
-                      border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between",
-                      alignItems: "center", gap: 1,
+                      border: "1px solid #e2e8f0",
                     }}>
-                    <Typography sx={{ fontWeight: 600, fontSize: 13.5, direction: "ltr", textAlign: "left" }}>
-                      {item.keyword}
-                    </Typography>
-                    <Box sx={{ display: "flex", gap: 0.6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      {item.categories.map((cat) => {
-                        const meta = labelMap[cat] || { color: "#666", icon: "" };
-                        return (
-                          <Chip key={cat} label={meta.icon} size="small"
-                            sx={{ bgcolor: `${meta.color}22`, color: meta.color, minWidth: 26, fontSize: 12 }} />
-                        );
-                      })}
-                    </Box>
+                    {section.type === "pair" && (
+                      <Typography sx={{ fontSize: 13.5, direction: "ltr", textAlign: "left" }}>
+                        <b>{item.item1}</b> &nbsp;↔&nbsp; <b>{item.item2}</b>
+                      </Typography>
+                    )}
+                    {section.type === "grouped" && (
+                      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                        <Typography sx={{ fontSize: 13.5, direction: "ltr", textAlign: "left" }}>{item.name}</Typography>
+                        <Chip label={item.group.split(":")[0]} size="small"
+                          sx={{ bgcolor: "#f1e6f7", color: "#7b4397", fontSize: 10, flexShrink: 0 }} />
+                      </Box>
+                    )}
+                    {section.type === "categorized" && (
+                      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                        <Box>
+                          <Typography sx={{ fontSize: 13.5, direction: "ltr", textAlign: "left" }}>{item.name}</Typography>
+                          {item.form && (
+                            <Typography variant="caption" sx={{ color: "#94a3b8", direction: "ltr", display: "block" }}>
+                              {item.form}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Chip label={item.category} size="small"
+                          sx={{ bgcolor: "#fbe6e3", color: "#c0392b", fontSize: 10, flexShrink: 0 }} />
+                      </Box>
+                    )}
                   </Paper>
                 ))}
               </Box>

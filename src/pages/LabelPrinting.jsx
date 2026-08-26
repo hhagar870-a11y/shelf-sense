@@ -52,10 +52,8 @@ import FormatAlignRightIcon from "@mui/icons-material/FormatAlignRight";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 // Reverted to MUI's real, tested icons — the hand-drawn SVG paths I tried
 // rendered as an unrecognizable teardrop/blob instead of an ear/eye.
-import EarIcon from "@mui/icons-material/HearingOutlined";
-import EyeIcon from "@mui/icons-material/RemoveRedEyeOutlined";
 
-import { AlertCircle as ErrorOutline } from "lucide-react";
+import { AlertCircle as ErrorOutline, Ear, AlertTriangle } from "lucide-react";
 import DoNotDisturbAltIcon from "@mui/icons-material/DoNotDisturbAlt";
 import GroupsIcon from "@mui/icons-material/Groups";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
@@ -72,6 +70,30 @@ import { useNavigate } from "react-router-dom";
 import { collection, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getDrugCategories } from "../data/getDrugCategories";
+
+// أيقونة "Look Alike" مرسومة يدوي عشان تطابق نفس شكلها بالانفنتوري بالضبط
+// (نفس الـ SVG المستخدم هناك — عين + بؤبؤ فيه "لمعة" بالزاوية)
+function LookAlikeEyeIcon({ size = 16, color = "#000", strokeWidth = 2.2, bgColor = "#FFD54F" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M2 12S5.5 5 12 5s10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="4.6" fill={color} />
+      <circle cx="13.6" cy="10.1" r="1.5" fill={bgColor} />
+    </svg>
+  );
+}
 
 /* ============================================================
    Smart Labeling — Shelf Sense
@@ -335,7 +357,7 @@ export default function LabelPrinting() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
   const [selectedMed, setSelectedMed] = useState(null);
   const [selectedDate, setSelectedDate] = useState("");
@@ -351,6 +373,12 @@ export default function LabelPrinting() {
   });
 
   const [orientation, setOrientation] = useState("horizontal");
+  // True once the person uses "Rotate 90°" / "Paper-saving" in the Arrange
+  // dialog — unlike `orientation` (which only swaps width/height), this
+  // means the label GRAPHIC itself is spun 90° (via RotatableLabel) so text
+  // and badges rotate with it instead of just being squeezed into a
+  // differently-shaped box.
+  const [rotated, setRotated] = useState(false);
   const [sizePreset, setSizePreset] = useState("custom");
   const [customSize, setCustomSize] = useState(TEMPLATES[0].dims);
   const [copies, setCopies] = useState(12);
@@ -396,13 +424,24 @@ export default function LabelPrinting() {
   // label's own — off by default so every medicine keeps its own link.
   const [batchUnifyQr, setBatchUnifyQr] = useState(false);
   const [batchUnifiedQrUrl, setBatchUnifiedQrUrl] = useState("");
-  // Lightweight per-session checklist so the user can track which medicines
-  // in the shelf list they've already printed/handled.
-  const [doneMeds, setDoneMeds] = useState(() => new Set());
+  // Checklist so the user can track which medicines in the shelf list
+  // they've already printed/handled — persisted in localStorage so a mark
+  // survives leaving the page and coming back (only cleared when the user
+  // unmarks it themselves).
+  const DONE_MEDS_STORAGE_KEY = "labelPrinting.doneMeds";
+  const [doneMeds, setDoneMeds] = useState(() => {
+    try {
+      const raw = typeof window !== "undefined" ? window.localStorage.getItem(DONE_MEDS_STORAGE_KEY) : null;
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   function toggleDone(id) {
     setDoneMeds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      try { window.localStorage.setItem(DONE_MEDS_STORAGE_KEY, JSON.stringify(Array.from(next))); } catch {}
       return next;
     });
   }
@@ -542,6 +581,7 @@ export default function LabelPrinting() {
     setSizePreset("custom");
     setCustomSize(tpl.dims);
     setOrientation("horizontal");
+    setRotated(false);
     setCategoryChips([]);
     document.getElementById("label-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -591,6 +631,7 @@ export default function LabelPrinting() {
       appearance: { ...appearance },
       dims: { ...dims },
       orientation,
+      rotated,
       categoryChips,
       badgesAvailable: categoryChips,
       categories: selectedMed ? [...new Set(selectedMed.categories || getDrugCategories(selectedMed.name, selectedMed.code))] : [],
@@ -626,6 +667,7 @@ export default function LabelPrinting() {
         appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
         dims: { ...dims },
         orientation,
+        rotated,
         categoryChips: showCategoryBadge ? badgeChipDefs : [],
         badgesAvailable: badgeChipDefs,
         categories,
@@ -656,11 +698,12 @@ export default function LabelPrinting() {
     requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
   }
 
-  function confirmArrangement(newDims, newArrangement) {
+  function confirmArrangement(newDims, newArrangement, newRotated) {
     setCustomSize(newDims);
     setSizePreset("custom");
     setOrientation("horizontal");
     setArrangement(newArrangement);
+    setRotated(!!newRotated);
     setArrangeOpen(false);
   }
 
@@ -961,7 +1004,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
@@ -1241,9 +1284,9 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                               backgroundColor: style.bg, color: badgeColor,
                             }}>
                               {cat}
-                              {cat === "High Alert" && <WarningAmberIcon sx={{ fontSize: 14 }} />}
-                              {cat === "Sound Alike" && <EarIcon sx={{ fontSize: 14 }} />}
-                              {cat === "Look Alike" && <EyeIcon sx={{ fontSize: 14 }} />}
+                              {cat === "High Alert" && <AlertTriangle size={14} color={badgeColor} strokeWidth={2.2} />}
+                              {cat === "Sound Alike" && <Ear size={14} color={badgeColor} strokeWidth={2.2} />}
+                              {cat === "Look Alike" && <LookAlikeEyeIcon size={17} color={badgeColor} strokeWidth={2.2} bgColor={style.bg} />}
                             </Box>
                           );
                         })}
@@ -1278,7 +1321,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                               labelText: { name: med.name, expiry: "", code: med.code || "", action: "", message: "", status: "" },
                               fields: { name: true, expiry: false, code: false, description: false, status: false, action: false, message: false, qr: fields.qr, barcode: fields.barcode, logo: true },
                               appearance: { bg: style.bg, text: style.text, accent: style.accent, fontSize: appearance.fontSize, bold: true, align: "center" },
-                              dims: { ...dims }, orientation, categoryChips: showCategoryBadge ? badgeChipDefs : [], badgesAvailable: badgeChipDefs, categories,
+                              dims: { ...dims }, orientation, rotated, categoryChips: showCategoryBadge ? badgeChipDefs : [], badgesAvailable: badgeChipDefs, categories,
                               qrUrl: "", qrMessageId: "", previewName: med.name,
                             }]);
                           }} sx={{ bgcolor: "#F0FDF4", "&:hover": { bgcolor: "#DCFCE7" }, borderRadius: "8px" }}>
@@ -1477,6 +1520,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         onClose={() => setArrangeOpen(false)}
         onConfirm={confirmArrangement}
         dims={dims}
+        rotated={rotated}
         orientation={orientation}
         arrangement={arrangement}
         template={template}
@@ -1498,13 +1542,13 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
       <Box id="print-sheet">
         {!printReady ? null : batch.length > 0
           ? (printSubsetIds ? batch.filter((it) => printSubsetIds.includes(it.id)) : batch).map((item) => (
-              <LabelCard key={item.id} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
+              <RotatableLabel key={item.id} rotated={item.rotated} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
                 dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
                 qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={item.categoryChips}
                 qrMessageId={batchUnifyQr ? "" : item.qrMessageId} />
             ))
           : Array.from({ length: copies }).map((_, i) => (
-              <LabelCard key={i} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
+              <RotatableLabel key={i} rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
                 printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos}
                 categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
             ))}
@@ -1614,7 +1658,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                 {current && (
                   <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5, width: 280, flexShrink: 0 }}>
                     <ScaledPreview maxBox={200} dims={current.dims} orientation={current.orientation}>
-                      <LabelCard template={{ icon: LocalOfferIcon, title: current.previewName, action: "" }}
+                      <RotatableLabel rotated={current.rotated} template={{ icon: LocalOfferIcon, title: current.previewName, action: "" }}
                         labelText={current.labelText} fields={current.fields} appearance={current.appearance}
                         dims={current.dims} orientation={current.orientation}
                         logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg}
@@ -1770,7 +1814,6 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
 // Small corner badge for Sound Alike / Look Alike — matches the Inventory
 // badge exactly: sharp corners, real icon (not emoji), not a pill.
 function CategoryBadge({ category, label, fontSize = 10 }) {
-  const Icon = category === "Sound Alike" ? EarIcon : category === "Look Alike" ? EyeIcon : category === "High Alert" || category === "Hazardous" ? WarningAmberIcon : null;
   // Colours/shape come from CATEGORY_STYLE — the exact same object used for
   // the medicine-list badges below — so this corner badge always looks
   // identical to "the badge in the table", per the approved reference.
@@ -1783,7 +1826,9 @@ function CategoryBadge({ category, label, fontSize = 10 }) {
       WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
     }}>
       {label}
-      {Icon && <Icon sx={{ fontSize: fontSize + 3 }} />}
+      {(category === "High Alert" || category === "Hazardous") && <AlertTriangle size={fontSize + 3} color={style.text} strokeWidth={2.2} />}
+      {category === "Sound Alike" && <Ear size={fontSize + 3} color={style.text} strokeWidth={2.2} />}
+      {category === "Look Alike" && <LookAlikeEyeIcon size={fontSize + 6} color={style.text} strokeWidth={2.2} bgColor={style.bg} />}
     </Box>
   );
 }
@@ -1828,15 +1873,15 @@ function ScaledPreview({ dims, orientation, maxBox = 320, children }) {
   );
 }
 
-function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChips, qrMessageId }) {
+function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChips, qrMessageId }) {
   const initW = orientation === "horizontal" ? dims.width : dims.height;
   const initH = orientation === "horizontal" ? dims.height : dims.width;
 
-  const [box, setBox] = useState({ x: arrangement.x, y: arrangement.y, w: initW, h: initH });
+  const [box, setBox] = useState({ x: arrangement.x, y: arrangement.y, w: initW, h: initH, rotated: !!rotated });
   const dragInfo = useRef(null);
 
   useEffect(() => {
-    if (open) setBox({ x: arrangement.x, y: arrangement.y, w: initW, h: initH });
+    if (open) setBox({ x: arrangement.x, y: arrangement.y, w: initW, h: initH, rotated: !!rotated });
   }, [open]);
 
   const canvasPxW = Math.min(560, typeof window !== "undefined" ? window.innerWidth * 0.75 : 560);
@@ -1885,7 +1930,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
   }
 
   function handleConfirm() {
-    onConfirm({ width: Math.round(box.w), height: Math.round(box.h) }, { x: Math.round(box.x), y: Math.round(box.y) });
+    onConfirm({ width: Math.round(box.w), height: Math.round(box.h) }, { x: Math.round(box.x), y: Math.round(box.y) }, box.rotated);
   }
 
   // How many copies fit on the page at the current size/position vs. if
@@ -1899,12 +1944,17 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
   const currentCount = estimateCount(box.w, box.h, box.x, box.y);
   const rotatedCount = estimateCount(box.h, box.w, 0, 0);
   function applyPaperSaving() {
-    setBox(rotatedCount > currentCount ? { x: 0, y: 0, w: box.h, h: box.w } : { ...box, x: 0, y: 0 });
+    setBox(rotatedCount > currentCount
+      ? { x: 0, y: 0, w: box.h, h: box.w, rotated: !box.rotated }
+      : { ...box, x: 0, y: 0 });
   }
   // Plain manual rotate — independent of the paper-saving suggestion, always
-  // available, keeps the current top-left position.
+  // available, keeps the current top-left position. Swaps the footprint
+  // AND flips `rotated` so the label graphic itself spins 90° to match —
+  // otherwise the same unrotated content just gets squeezed into a
+  // differently-shaped box (wrong proportions, text never turns).
   function rotate90() {
-    setBox((b) => ({ ...b, w: b.h, h: b.w }));
+    setBox((b) => ({ ...b, w: b.h, h: b.w, rotated: !b.rotated }));
   }
 
   return (
@@ -1917,6 +1967,13 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
         <Typography variant="body2" sx={{ color: "#6b7280", mb: 2 }}>
           Drag the label to move it, drag the bottom-right corner to resize it. Copies fill the rest of the page starting from here.
         </Typography>
+        <Box sx={{ textAlign: "center", mb: 2 }}>
+          <Button size="small" variant="outlined" onClick={applyPaperSaving}
+            disabled={rotatedCount <= currentCount}
+            sx={{ textTransform: "none", borderColor: "#16A34A", color: "#16A34A" }}>
+            🌱 Paper-saving: rotate to fill the page {rotatedCount > currentCount ? `(~${rotatedCount} per page instead of ~${currentCount})` : "— current layout is already the best fit"}
+          </Button>
+        </Box>
         <Box sx={{
           width: canvasPxW, height: canvasPxH, mx: "auto", position: "relative",
           bgcolor: "#fff", border: "1px solid #cbd5e1", boxShadow: "0 1px 6px rgba(0,0,0,0.1)",
@@ -1931,7 +1988,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
             }}
           >
             <Box sx={{ width: box.w * PXPERMM, height: box.h * PXPERMM, pointerEvents: "none", transform: `scale(${scale})`, transformOrigin: "top left" }}>
-              <LabelCard template={template} labelText={labelText} fields={fields} appearance={appearance}
+              <RotatableLabel rotated={box.rotated} template={template} labelText={labelText} fields={fields} appearance={appearance}
                 dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={categoryChips} qrMessageId={qrMessageId} />
             </Box>
             <Box
@@ -1952,13 +2009,6 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
         <Typography variant="caption" sx={{ color: "#9ca3af", display: "block", textAlign: "center", mt: 1.5 }}>
           {Math.round(box.w)}×{Math.round(box.h)}mm at ({Math.round(box.x)}, {Math.round(box.y)})mm from the top-left corner — fits ~{currentCount} per page this way
         </Typography>
-        <Box sx={{ textAlign: "center", mt: 1 }}>
-          <Button size="small" variant="outlined" onClick={applyPaperSaving}
-            disabled={rotatedCount <= currentCount}
-            sx={{ textTransform: "none", borderColor: "#16A34A", color: "#16A34A" }}>
-            🌱 Paper-saving: rotate to fill the page {rotatedCount > currentCount ? `(~${rotatedCount} per page instead of ~${currentCount})` : "— current layout is already the best fit"}
-          </Button>
-        </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 3 }}>
         <Button onClick={onClose} sx={{ textTransform: "none" }}>Cancel</Button>
@@ -1968,6 +2018,33 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, arrangemen
         </Button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+// Wraps LabelCard to physically rotate the WHOLE label graphic 90° (title,
+// badges, icons — everything spins together, unlike just swapping
+// width/height which only stretches the same unrotated layout into a
+// differently-shaped box). `dims` here is always the already-oriented
+// "footprint" size (same thing normally passed straight to LabelCard) —
+// when `rotated` is true we render LabelCard at its natural (un-rotated)
+// size and spin that inside a footprint box of the given dims, so the
+// footprint used for drag/resize/print-grid layout stays correct while the
+// content itself visibly rotates.
+function RotatableLabel({ rotated, dims, orientation, ...rest }) {
+  if (!rotated) return <LabelCard dims={dims} orientation={orientation} {...rest} />;
+  const outerW = orientation === "horizontal" ? dims.width : dims.height;
+  const outerH = orientation === "horizontal" ? dims.height : dims.width;
+  const innerDims = { width: outerH, height: outerW };
+  return (
+    <Box sx={{ width: `${outerW}mm`, height: `${outerH}mm`, position: "relative", flexShrink: 0 }}>
+      <Box sx={{
+        position: "absolute", left: "50%", top: "50%",
+        width: `${innerDims.width}mm`, height: `${innerDims.height}mm`,
+        transform: "translate(-50%, -50%) rotate(90deg)",
+      }}>
+        <LabelCard dims={innerDims} orientation="horizontal" {...rest} />
+      </Box>
+    </Box>
   );
 }
 
