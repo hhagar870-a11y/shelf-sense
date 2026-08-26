@@ -23,13 +23,28 @@
 // Every <Route> nested inside the <Route element={<ProtectedRoute />}>
 // block is automatically gated - no need to touch each page individually.
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { isAuthenticated } from "../utils/auth";
+import { authReady } from "../firebase";
 
 export default function ProtectedRoute() {
+  // ننتظر لحظة اكتمال تسجيل الدخول المجهول (Anonymous Auth) بفايرستور قبل
+  // ما نعرض أي صفحة تقرأ/تكتب بيانات - عادة أقل من ثانية، بس بدونها ممكن
+  // أول طلب بيانات يوصل السيرفر قبل ما يكون معه تصريح صالح، فيرفضه
+  const [firebaseReady, setFirebaseReady] = useState(false);
+
+  useEffect(() => {
+    authReady.finally(() => setFirebaseReady(true));
+  }, []);
+
   if (!isAuthenticated()) {
     return <Navigate to="/login" replace />;
   }
+
+  if (!firebaseReady) {
+    return null;
+  }
+
   return <Outlet />;
 }

@@ -1,5 +1,10 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
+import { getAuth, signInAnonymously } from "firebase/auth";
 
 // بيانات الإعدادات الخاصة بمشروعك من لوحة تحكم فايربيس
 const firebaseConfig = {
@@ -13,4 +18,22 @@ const firebaseConfig = {
 
 // تهيئة الفايربيس وقاعدة البيانات
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// تفعيل التخزين المحلي (offline persistence): لو النت ضعيف أو انقطع لحظيًا،
+// أي قراءة/كتابة تنحفظ محليًا بالجهاز فورًا وتترسل تلقائيًا بمجرد ما يرجع
+// النت — بدل ما تفشل العملية وتحتاج المستخدم يعيد المحاولة يدويًا.
+// persistentMultipleTabManager يخلي هذا يشتغل صح حتى لو فتح المستخدم أكثر
+// من تبويب لنفس الموقع بنفس المتصفح بنفس الوقت
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+});
+
+// مصادقة مجهولة (Anonymous Auth): تسجيل دخول تلقائي وصامت بالخلفية، بدون
+// أي شاشة أو حساب مستخدم إضافي — بس يضمن إن أي طلب يوصل فايرستور معه
+// تصريح صادر فعليًا من تطبيقك (بوت أو زائر برا الموقع ما يقدر يحصل عليه).
+// هذا يسمح بربط قاعدة أمان فايرستور بشرط "request.auth != null" بدل قاعدة
+// التاريخ المؤقت الافتراضية اللي كانت بتقفل كل شي يوم ١٦ سبتمبر
+export const auth = getAuth(app);
+export const authReady = signInAnonymously(auth);

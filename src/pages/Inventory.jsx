@@ -628,7 +628,10 @@ const persistMedicines = (list) => {
         knownMedicineIdsRef.current = ids;
         lastSyncedContentRef.current = contentMap;
       })
-      .catch((err) => console.error("فشل حفظ الأدوية بـ Firestore:", err));
+      .catch((err) => {
+        console.error("فشل حفظ الأدوية بـ Firestore:", err);
+        setSyncErrorOpen(true);
+      });
   }, 400);
 };
 
@@ -714,6 +717,13 @@ const [trashItems, setTrashItems] = useState([]);
 const [trashOpen, setTrashOpen] = useState(false);
 const [pendingDelete, setPendingDelete] = useState(null);
 const [undoSnackOpen, setUndoSnackOpen] = useState(false);
+// يظهر لو ضغطنا UNDO لكن الكتابة الفعلية على فايرستور فشلت — بدون هذا
+// تنبيه، المستخدم يشوف الدواء رجع بالجدول ويفتكر التراجع نجح وهو فعليًا
+// لسا محذوف بالسيرفر (نفس السبب اللي كان يخلي الدواء "يرجع يختفي" بعد تحديث الصفحة)
+const [undoFailedOpen, setUndoFailedOpen] = useState(false);
+// تنبيه هادئ بس لو المزامنة العامة بالخلفية (أي تعديل عادي: إضافة/تعديل/كمية)
+// فشلت — بنفس مستوى بساطة إشعار "تراجع" فوق، مو تنبيه أحمر مزعج
+const [syncErrorOpen, setSyncErrorOpen] = useState(false);
 // أثناء نقل دواء لسلة المهملات نعطّل زره ونعرض دوّامة تحميل بدل الأيقونة،
 // عشان المستخدم يعرف إن الضغطة انسجلت ولا يضغط عليها مرتين وهو منتظر
 const [deletingIds, setDeletingIds] = useState(() => new Set());
@@ -1335,6 +1345,11 @@ const handleDelete = async (id) => {
 
  setDeletingIds((prev) => new Set(prev).add(id));
 
+ // نمنع الـ useEffect العام (اللي يراقب medicines) من تشغيل مزامنة كاملة
+ // مؤجّلة (persistMedicines) فوق هالتغيير — إحنا أصلاً بنكتب على فايرستور
+ // مباشرة تحت، ومزامنته العامة كانت تدخل بسباق (race) مع الكتابة المباشرة
+ // على نت بطيء وتسبب رجوع بيانات قديمة بعد التراجع
+ skipNextPersistRef.current = true;
  const updatedMedicines = medicines.filter((_, i) => i !== index);
  setMedicines(updatedMedicines);
 
@@ -1382,6 +1397,10 @@ const handleUndoDelete = async () => {
   if (!pendingDelete) return;
   const { medicine, index } = pendingDelete;
 
+  // نفس المنطق اللي بالحذف: نوقف المزامنة العامة المؤجّلة عن هالتغيير
+  // عشان ما تتصادم (race) مع الكتابة المباشرة تحت وترجع تحذف المستند
+  // اللي احنا لسا نكتبه
+  skipNextPersistRef.current = true;
   const restored = [...medicines];
   restored.splice(index, 0, medicine);
   setMedicines(restored);
@@ -1398,6 +1417,15 @@ const handleUndoDelete = async () => {
     lastSyncedContentRef.current.set(String(medicine.id), JSON.stringify(medicine));
   } catch (err) {
     console.error("فشل التراجع عن الحذف:", err);
+    // الكتابة الفعلية بفايرستور فشلت — لازم نرجّع الواجهة لحالتها الحقيقية
+    // (الدواء لسا بالسلة) بدل ما نخلي المستخدم يفتكر إن التراجع نجح وهو
+    // ما نجح فعليًا، وننبّهه يحاول مرة ثانية
+    skipNextPersistRef.current = true;
+    setMedicines((curr) => curr.filter((m) => m.id !== medicine.id));
+    setUndoFailedOpen(true);
+    setPendingDelete(null);
+    setUndoSnackOpen(false);
+    return;
   }
 
   setPendingDelete(null);
@@ -1435,9 +1463,34 @@ const handleEmptyTrash = async () => {
   }
 };
 
-const handleDeleteAll = () => {
-  if (window.confirm("Are you sure you want to delete all medicines?")) {
-    setMedicines([]);
+const handleDeleteAll = async () => {
+  if (!window.confirm("Are you sure you want to delete all medicines?")) return;
+
+  // نفس مسار الحذف الفردي بالضبط (نفس trash write + نفس الحذف الفوري)،
+  // بس مطبّق على كل دواء — عشان "حذف الكل" يصير له نسخة احتياطية بالسلة
+  // زي أي حذف عادي، بدل ما يعتمد على المزامنة العامة المؤجّلة اللي كانت
+  // تحذف كل المستندات مباشرة من فايرستور بدون أي رجعة لو صار خطأ بالنص.
+  // عناصر الأقسام (isSection) مو أدوية فعلية فما تروح للسلة، تنمسح مباشرة
+  // زي ما كانت تنمسح قبل بالضبط
+  const toTrash = medicines.filter((m) => !m.isSection);
+  const deletedAt = Date.now();
+
+  skipNextPersistRef.current = true;
+  setMedicines([]);
+
+  try {
+    await Promise.all(
+      toTrash.flatMap((medicine) => [
+        setDoc(doc(db, TRASH_COLLECTION, String(medicine.id)), { ...medicine, deletedAt }),
+        deleteMedicineDocImmediately(medicine.id),
+      ])
+    );
+    setTrashItems((prev) => [...prev, ...toTrash.map((m) => ({ ...m, deletedAt }))]);
+    knownMedicineIdsRef.current = new Set();
+    lastSyncedContentRef.current = new Map();
+  } catch (err) {
+    console.error("فشل نقل كل الأدوية لسلة المهملات:", err);
+    setSyncErrorOpen(true);
   }
 };
 
@@ -3870,6 +3923,36 @@ return (
       sx={{ bgcolor: "#334155" }}
     >
       {pendingDelete ? `"${pendingDelete.medicine.name}" moved to trash` : "Medicine deleted"}
+    </Alert>
+  </Snackbar>
+
+  {/* إشعار هادئ لو تعديل عادي (إضافة/تعديل/كمية) ما انحفظ فعليًا بالخلفية —
+      نفس شكل وموقع إشعار التراجع بالضبط، بدون أي لون تحذيري مزعج */}
+  <Snackbar
+    open={syncErrorOpen}
+    autoHideDuration={5000}
+    onClose={() => setSyncErrorOpen(false)}
+    anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+  >
+    <Alert
+      onClose={() => setSyncErrorOpen(false)}
+      severity="info"
+      variant="filled"
+      sx={{ bgcolor: "#334155" }}
+    >
+      Change wasn't saved — weak internet connection, please try again
+    </Alert>
+  </Snackbar>
+
+  {/* تنبيه لو التراجع (UNDO) ما نجح فعليًا بحفظه على فايرستور */}
+  <Snackbar
+    open={undoFailedOpen}
+    autoHideDuration={6000}
+    onClose={() => setUndoFailedOpen(false)}
+    anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+  >
+    <Alert onClose={() => setUndoFailedOpen(false)} severity="error" variant="filled">
+      Undo failed — the item is still in the Trash. Please try restoring it from there.
     </Alert>
   </Snackbar>
 
