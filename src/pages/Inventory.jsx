@@ -8,6 +8,7 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 // كاش بمستوى الملف (مو داخل الكومبوننت) يفضل موجود بالذاكرة حتى لو انتقلت
@@ -1466,25 +1467,43 @@ const handleEmptyTrash = async () => {
 const handleDeleteAll = async () => {
   if (!window.confirm("Are you sure you want to delete all medicines?")) return;
 
-  // نفس مسار الحذف الفردي بالضبط (نفس trash write + نفس الحذف الفوري)،
-  // بس مطبّق على كل دواء — عشان "حذف الكل" يصير له نسخة احتياطية بالسلة
-  // زي أي حذف عادي، بدل ما يعتمد على المزامنة العامة المؤجّلة اللي كانت
-  // تحذف كل المستندات مباشرة من فايرستور بدون أي رجعة لو صار خطأ بالنص.
-  // عناصر الأقسام (isSection) مو أدوية فعلية فما تروح للسلة، تنمسح مباشرة
-  // زي ما كانت تنمسح قبل بالضبط
   const toTrash = medicines.filter((m) => !m.isSection);
+  // الأقسام (isSection) مو أدوية فعلية فما تروح للسلة، بس لازم تنحذف
+  // صراحة من فايرستور هنا — قبل كذا كانت تختفي بس من الواجهة وتضل
+  // موجودة فعليًا بالسيرفر، وترجع تطلع بعد أي تحديث للصفحة
+  const sectionsToRemove = medicines.filter((m) => m.isSection);
   const deletedAt = Date.now();
 
   skipNextPersistRef.current = true;
   setMedicines([]);
 
   try {
-    await Promise.all(
-      toTrash.flatMap((medicine) => [
-        setDoc(doc(db, TRASH_COLLECTION, String(medicine.id)), { ...medicine, deletedAt }),
-        deleteMedicineDocImmediately(medicine.id),
-      ])
-    );
+    // نبني كل عملية (كتابة تراش / حذف) كدالة صغيرة، ونطبقها على "دفعات"
+    // (batch) بدل ما نرسل مئات الطلبات المنفصلة بنفس الوقت — دفعة واحدة
+    // تنرسل بطلب شبكة وحد، وهذا أسرع وأوثق بكثير على نت ضعيف من مئات
+    // الطلبات المتوازية اللي كانت تسبب التعليق/التأخير اللي لاحظتيه.
+    // فايرستور يسمح بحد أقصى 500 عملية بالدفعة الوحدة فنحط هامش أمان 450
+    const ops = [];
+    toTrash.forEach((medicine) => {
+      ops.push((batch) =>
+        batch.set(doc(db, TRASH_COLLECTION, String(medicine.id)), {
+          ...medicine,
+          deletedAt,
+        })
+      );
+      ops.push((batch) => batch.delete(doc(db, MEDICINES_COLLECTION, String(medicine.id))));
+    });
+    sectionsToRemove.forEach((section) => {
+      ops.push((batch) => batch.delete(doc(db, MEDICINES_COLLECTION, String(section.id))));
+    });
+
+    const CHUNK_SIZE = 450;
+    for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
+      const batch = writeBatch(db);
+      ops.slice(i, i + CHUNK_SIZE).forEach((apply) => apply(batch));
+      await batch.commit();
+    }
+
     setTrashItems((prev) => [...prev, ...toTrash.map((m) => ({ ...m, deletedAt }))]);
     knownMedicineIdsRef.current = new Set();
     lastSyncedContentRef.current = new Map();

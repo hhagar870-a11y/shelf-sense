@@ -397,6 +397,12 @@ export default function LabelPrinting() {
   const [qrSize, setQrSize] = useState(35);
   // Opposite corner from the logo's default, so they never start out overlapping.
   const [qrPos, setQrPos] = useState({ x: 20, y: 87 });
+  // Custom Message used to live inline in the centered content column, so
+  // turning it on/off (or it just wrapping to another line) shifted the
+  // medicine name up/down. It now has its own free-floating position, same
+  // as the logo/QR, so it never disturbs the rest of the layout.
+  const [messagePos, setMessagePos] = useState({ x: 50, y: 90 });
+  const [namePos, setNamePos] = useState({ x: 50, y: 35 });
   // Live preview values the on-screen card follows WHILE dragging a slider —
   // the committed logoPos/qrPos (which re-renders the whole editor) only
   // updates once, on release.
@@ -404,10 +410,14 @@ export default function LabelPrinting() {
   const [liveLogoSize, setLiveLogoSize] = useState(logoSize);
   const [liveQrPos, setLiveQrPos] = useState(qrPos);
   const [liveQrSize, setLiveQrSize] = useState(qrSize);
+  const [liveMessagePos, setLiveMessagePos] = useState(messagePos);
+  const [liveNamePos, setLiveNamePos] = useState(namePos);
   useEffect(() => setLiveLogoPos(logoPos), [logoPos]);
   useEffect(() => setLiveLogoSize(logoSize), [logoSize]);
   useEffect(() => setLiveQrPos(qrPos), [qrPos]);
   useEffect(() => setLiveQrSize(qrSize), [qrSize]);
+  useEffect(() => setLiveMessagePos(messagePos), [messagePos]);
+  useEffect(() => setLiveNamePos(namePos), [namePos]);
   const [categoryChips, setCategoryChips] = useState([]);
   const [showCategoryBadge, setShowCategoryBadge] = useState(true);
   // Tracks a manually-picked category (for medicines not tagged in the
@@ -454,11 +464,25 @@ export default function LabelPrinting() {
   const [qrMessageHtml, setQrMessageHtml] = useState("");
   const [qrMessageId] = useState(() => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   const [qrMessageSaved, setQrMessageSaved] = useState(false);
+  // The contentEditable box used to call setQrMessageHtml on every single
+  // keystroke, which re-rendered the whole heavy editor tree each time and
+  // was the real cause of the typing lag. Debounce it like the other text
+  // fields; flush immediately on blur so a quick type-then-click never
+  // saves stale text.
+  const qrMsgTimerRef = useRef(null);
+  function handleQrMsgInput(e) {
+    const html = e.currentTarget.innerHTML;
+    if (qrMsgTimerRef.current) clearTimeout(qrMsgTimerRef.current);
+    qrMsgTimerRef.current = setTimeout(() => setQrMessageHtml(html), 400);
+  }
 
-  async function saveQrMessage() {
-    if (!qrMessageHtml.trim()) return;
+  async function saveQrMessage(htmlOverride) {
+    if (qrMsgTimerRef.current) { clearTimeout(qrMsgTimerRef.current); qrMsgTimerRef.current = null; }
+    const html = htmlOverride !== undefined ? htmlOverride : qrMessageHtml;
+    if (htmlOverride !== undefined) setQrMessageHtml(htmlOverride);
+    if (!html.trim()) return;
     try {
-      await setDoc(doc(db, "qrMessages", qrMessageId), { html: qrMessageHtml, updatedAt: Date.now() });
+      await setDoc(doc(db, "qrMessages", qrMessageId), { html, updatedAt: Date.now() });
       setQrMessageSaved(true);
     } catch (err) {
       console.error("Failed to save QR message:", err);
@@ -840,33 +864,33 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                         Note: if printed very small, some mobile phone cameras may not be able to scan this QR code.
                       </Typography>
                     )}
-                    {(fields.logo || fields.qr) && (
+                    {(fields.logo || fields.qr || fields.message) && (
                       <Typography variant="caption" sx={{ color: "#1D4ED8", display: "block", mt: -0.5, mb: 1, ml: 4, fontWeight: 600 }}>
                         → Edit position & size in the ✎ Position tab above
                       </Typography>
                     )}
                     {fields.name && expandedField === "name" && (
-                      <TextField fullWidth multiline minRows={2} maxRows={5} label="Medication Name" sx={{ mt: 1 }}
+                      <DebouncedTextField fullWidth multiline minRows={2} maxRows={5} label="Medication Name" sx={{ mt: 1 }}
                         helperText="Edit freely — trim the strength/dosage if you don't want it shown, or press Enter to control the line breaks yourself."
-                        value={labelText.name} onChange={(e) => setLabelText({ ...labelText, name: e.target.value })} />
+                        value={labelText.name} onCommit={(v) => setLabelText({ ...labelText, name: v })} />
                     )}
                     {fields.action && expandedField === "action" && (
-                      <TextField fullWidth size="small" label="Action / Instruction" sx={{ mt: 1.5 }}
-                        value={labelText.action} onChange={(e) => setLabelText({ ...labelText, action: e.target.value })} />
+                      <DebouncedTextField fullWidth size="small" label="Action / Instruction" sx={{ mt: 1.5 }}
+                        value={labelText.action} onCommit={(v) => setLabelText({ ...labelText, action: v })} />
                     )}
                     {fields.message && expandedField === "message" && (
-                      <TextField fullWidth size="small" label="Custom message" sx={{ mt: 1.5 }}
+                      <DebouncedTextField fullWidth size="small" label="Custom message" sx={{ mt: 1.5 }}
                         placeholder="e.g. CHECK BEFORE DISPENSING"
-                        value={labelText.message} onChange={(e) => setLabelText({ ...labelText, message: e.target.value })} />
+                        value={labelText.message} onCommit={(v) => setLabelText({ ...labelText, message: v })} />
                     )}
                     {fields.qr && expandedField === "qr" && (
                       <>
-                        <TextField fullWidth size="small" label="Link for this QR code" sx={{ mt: 1.5 }}
+                        <DebouncedTextField fullWidth size="small" label="Link for this QR code" sx={{ mt: 1.5 }}
                           placeholder="Attach the link this QR should open — e.g. https://..."
                           helperText={qrCustomUrl.trim()
                             ? "Scanning the QR will open this link."
                             : "Nothing attached yet — this label's QR will auto-link to this medicine's own info page until you add one."}
-                          value={qrCustomUrl} onChange={(e) => setQrCustomUrl(e.target.value)} />
+                          value={qrCustomUrl} onCommit={(v) => setQrCustomUrl(v)} />
 
                         {!qrCustomUrl.trim() && (
                           <Box sx={{ mt: 1.5 }}>
@@ -883,8 +907,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                             <Box
                               contentEditable
                               suppressContentEditableWarning
-                              onInput={(e) => setQrMessageHtml(e.currentTarget.innerHTML)}
-                              onBlur={saveQrMessage}
+                              onInput={handleQrMsgInput}
+                              onBlur={(e) => saveQrMessage(e.currentTarget.innerHTML)}
                               sx={{
                                 minHeight: 70, border: "1px solid #e5e7eb", borderRadius: 1.5, p: 1.5, fontSize: 14,
                                 "&:empty:before": { content: '"Type a message pharmacists will see when they scan this label\'s QR..."', color: "#9ca3af" },
@@ -928,7 +952,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 )}
 
                 {activeTab === "branding" && fields.qr && (
-                  <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 2 }}>
+                  <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 2, mb: fields.message ? 2 : 0 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>QR code</Typography>
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
                     <DebouncedSlider size="small" min={0} max={100} value={qrPos.x}
@@ -939,6 +963,36 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
                     <DebouncedSlider size="small" min={20} max={70} value={qrSize}
                       onLiveChange={setLiveQrSize} onCommit={(v) => setQrSize(v)} />
+                  </Box>
+                )}
+
+                {activeTab === "branding" && fields.name && (
+                  <Box sx={{ bgcolor: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 2, p: 2, mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Medication name</Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 1 }}>
+                      Positioned freely too, just like the logo/QR — it never shifts on its own when you turn other fields on or off.
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={namePos.x}
+                      onLiveChange={(v) => setLiveNamePos({ ...namePos, x: v })} onCommit={(v) => setNamePos({ ...namePos, x: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={namePos.y}
+                      onLiveChange={(v) => setLiveNamePos({ ...namePos, y: v })} onCommit={(v) => setNamePos({ ...namePos, y: v })} />
+                  </Box>
+                )}
+
+                {activeTab === "branding" && fields.message && (
+                  <Box sx={{ bgcolor: "#FEF9C3", border: "1px solid #FDE68A", borderRadius: 2, p: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Custom message</Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 1 }}>
+                      Placed freely — it no longer pushes the medication name when you turn it on or edit the text.
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={messagePos.x}
+                      onLiveChange={(v) => setLiveMessagePos({ ...messagePos, x: v })} onCommit={(v) => setMessagePos({ ...messagePos, x: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={messagePos.y}
+                      onLiveChange={(v) => setLiveMessagePos({ ...messagePos, y: v })} onCommit={(v) => setMessagePos({ ...messagePos, y: v })} />
                   </Box>
                 )}
 
@@ -1004,7 +1058,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
@@ -1512,6 +1566,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
         setLogoPos={setLogoPos} setLogoSize={setLogoSize} setLogoBg={setLogoBg}
         qrSize={qrSize} qrPos={qrPos} setQrSize={setQrSize} setQrPos={setQrPos}
+        messagePos={messagePos} setMessagePos={setMessagePos}
+        namePos={namePos} setNamePos={setNamePos}
       />
 
       {/* ---------- Arrange on A4 dialog ---------- */}
@@ -1534,6 +1590,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         qrUrl={qrCustomUrl}
         qrSize={qrSize}
         qrPos={qrPos}
+        messagePos={messagePos}
+        namePos={namePos}
         categoryChips={categoryChips}
         qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""}
       />
@@ -1544,12 +1602,12 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
           ? (printSubsetIds ? batch.filter((it) => printSubsetIds.includes(it.id)) : batch).map((item) => (
               <RotatableLabel key={item.id} rotated={item.rotated} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
                 dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
-                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={item.categoryChips}
+                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} categoryChips={item.categoryChips}
                 qrMessageId={batchUnifyQr ? "" : item.qrMessageId} />
             ))
           : Array.from({ length: copies }).map((_, i) => (
               <RotatableLabel key={i} rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
-                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos}
+                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos}
                 categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
             ))}
       </Box>
@@ -1557,7 +1615,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
   );
 }
 
-function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, setLogoPos, setLogoSize, setLogoBg, qrSize, qrPos, setQrSize, setQrPos }) {
+function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, setLogoPos, setLogoSize, setLogoBg, qrSize, qrPos, setQrSize, setQrPos, messagePos, setMessagePos, namePos, setNamePos }) {
   const [index, setIndex] = useState(0);
   const [visited, setVisited] = useState(() => new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -1569,10 +1627,14 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   const [liveLogoSize, setLiveLogoSize] = useState(logoSize);
   const [liveQrPos, setLiveQrPos] = useState(qrPos);
   const [liveQrSize, setLiveQrSize] = useState(qrSize);
+  const [liveMessagePos, setLiveMessagePos] = useState(messagePos);
+  const [liveNamePos, setLiveNamePos] = useState(namePos);
   useEffect(() => setLiveLogoPos(logoPos), [logoPos]);
   useEffect(() => setLiveLogoSize(logoSize), [logoSize]);
   useEffect(() => setLiveQrPos(qrPos), [qrPos]);
   useEffect(() => setLiveQrSize(qrSize), [qrSize]);
+  useEffect(() => setLiveMessagePos(messagePos), [messagePos]);
+  useEffect(() => setLiveNamePos(namePos), [namePos]);
   // Once the person turns QR on for one card, keep it on as they move
   // forward through the rest — each card still gets its own blank link.
   const [qrStickyOn, setQrStickyOn] = useState(false);
@@ -1662,7 +1724,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                         labelText={current.labelText} fields={current.fields} appearance={current.appearance}
                         dims={current.dims} orientation={current.orientation}
                         logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg}
-                        qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={liveQrSize} qrPos={liveQrPos}
+                        qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos}
                         categoryChips={current.categoryChips} qrMessageId={batchUnifyQr ? "" : current.qrMessageId} />
                     </ScaledPreview>
                     <Typography sx={{ fontWeight: 700, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{current.previewName}</Typography>
@@ -1723,10 +1785,21 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
             {/* Same logo/QR position & size controls as the main editor's
                 Position tab — available here too, applies to every label. */}
             <Button size="small" onClick={() => setShowPosition((s) => !s)} sx={{ textTransform: "none", mb: showPosition ? 1 : 0 }}>
-              {showPosition ? "Hide" : "✎ Adjust logo / QR position & size"}
+              {showPosition ? "Hide" : "✎ Adjust name / logo / QR position & size"}
             </Button>
             {showPosition && (
               <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
+                {current && current.fields.name && (
+                  <Box sx={{ bgcolor: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 2, p: 1.5, flex: 1, minWidth: 180 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>Medication name</Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={namePos.x}
+                      onLiveChange={(v) => setLiveNamePos({ ...namePos, x: v })} onCommit={(v) => setNamePos({ ...namePos, x: v })} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={namePos.y}
+                      onLiveChange={(v) => setLiveNamePos({ ...namePos, y: v })} onCommit={(v) => setNamePos({ ...namePos, y: v })} />
+                  </Box>
+                )}
                 {logoDataUrl && (
                   <Box sx={{ bgcolor: "#EAF2FF", border: "1px solid #BFDBFE", borderRadius: 2, p: 1.5, flex: 1, minWidth: 180 }}>
                     <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>Logo</Typography>
@@ -1848,6 +1921,36 @@ function DebouncedSlider({ value, onCommit, onLiveChange, ...props }) {
   );
 }
 
+// Same idea as DebouncedSlider but for text inputs: the field itself is
+// controlled by fast local state (so every keystroke feels instant, no
+// matter how heavy the rest of the page is), and only pushes the value up
+// to the parent — which re-renders the live QR code / barcode / medicine
+// table — ~250ms after the person stops typing. A manual blur/Enter also
+// commits immediately so nothing is lost if they click away right after
+// typing.
+function DebouncedTextField({ value, onCommit, delay = 250, ...props }) {
+  const [local, setLocal] = useState(value);
+  const timerRef = useRef(null);
+  useEffect(() => { setLocal(value); }, [value]);
+  function flush(v) {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    onCommit(v);
+  }
+  return (
+    <TextField
+      {...props}
+      value={local}
+      onChange={(e) => {
+        const v = e.target.value;
+        setLocal(v);
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => onCommit(v), delay);
+      }}
+      onBlur={(e) => { flush(e.target.value); props.onBlur && props.onBlur(e); }}
+    />
+  );
+}
+
 function ColorField({ label, value, onChange }) {
   return (
     <Box>
@@ -1873,7 +1976,7 @@ function ScaledPreview({ dims, orientation, maxBox = 320, children }) {
   );
 }
 
-function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChips, qrMessageId }) {
+function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, categoryChips, qrMessageId }) {
   const initW = orientation === "horizontal" ? dims.width : dims.height;
   const initH = orientation === "horizontal" ? dims.height : dims.width;
 
@@ -1989,7 +2092,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, a
           >
             <Box sx={{ width: box.w * PXPERMM, height: box.h * PXPERMM, pointerEvents: "none", transform: `scale(${scale})`, transformOrigin: "top left" }}>
               <RotatableLabel rotated={box.rotated} template={template} labelText={labelText} fields={fields} appearance={appearance}
-                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} categoryChips={categoryChips} qrMessageId={qrMessageId} />
+                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} categoryChips={categoryChips} qrMessageId={qrMessageId} />
             </Box>
             <Box
               onMouseDown={startResize}
@@ -2048,7 +2151,7 @@ function RotatableLabel({ rotated, dims, orientation, ...rest }) {
   );
 }
 
-function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, categoryChips, qrMessageId }) {
+function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, categoryChips, qrMessageId }) {
   const Icon = template.icon;
   const width = orientation === "horizontal" ? dims.width : dims.height;
   const height = orientation === "horizontal" ? dims.height : dims.width;
@@ -2114,33 +2217,48 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           // placeholder rather than a normal, finished QR code.
           opacity: qrUrl?.trim() ? 1 : 0.32,
         }}>
-          <QRCodeSVG
+          <MemoQRCode
             value={qrUrl?.trim()
               ? qrUrl.trim()
               : `${typeof window !== "undefined" ? window.location.origin : ""}/scan-result?code=${encodeURIComponent(labelText.code || labelText.name)}${qrMessageId ? `&msg=${qrMessageId}` : ""}`}
             size={Math.max(40, mmToPx(Math.min(width, height)) * ((qrSize ?? 40) / 100))}
-            level="H"
           />
         </Box>
       )}
       {!fields.name && <Icon sx={{ color: appearance.accent, fontSize: `${appearance.fontSize + 14}px` }} />}
-      {showNamePlaceholder ? (
+      {fields.name && showNamePlaceholder && (
         <Box sx={{
           bgcolor: BLUE, color: "#fff", fontWeight: 700, fontSize: `${Math.max(appearance.fontSize - 1, 11)}px`,
           borderRadius: "10px", px: 2, py: 1, textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
         }}>
           Select a medicine below ↓
         </Box>
-      ) : (
+      )}
+      {!fields.name && (
         <Box sx={{
           fontWeight: appearance.bold ? 800 : 600,
-          fontSize: `${appearance.fontSize + (fields.name ? 2 : 4)}px`,
+          fontSize: `${appearance.fontSize + 4}px`,
           lineHeight: 1.25,
         }}>
-          {(fields.name && labelText.name
-            ? (labelText.name.includes("\n") ? labelText.name.split("\n").filter((l) => l.trim()) : splitMedicationText(labelText.name))
-            : mainTitle.split("\n")
-          ).map((line, i) => (
+          {mainTitle.split("\n").map((line, i) => (
+            <Box key={i}>{line}</Box>
+          ))}
+        </Box>
+      )}
+      {fields.name && !showNamePlaceholder && labelText.name && (
+        // Positioned freely, like the logo/QR/message — never shifts on its
+        // own just because some other field got turned on or off.
+        <Box sx={{
+          position: "absolute",
+          left: `${namePos?.x ?? 50}%`, top: `${namePos?.y ?? 35}%`,
+          transform: "translate(-50%, -50%)",
+          width: "88%",
+          fontWeight: appearance.bold ? 800 : 600,
+          fontSize: `${appearance.fontSize + 2}px`,
+          lineHeight: 1.25,
+          textAlign: appearance.align === "left" ? "left" : appearance.align === "right" ? "right" : "center",
+        }}>
+          {(labelText.name.includes("\n") ? labelText.name.split("\n").filter((l) => l.trim()) : splitMedicationText(labelText.name)).map((line, i) => (
             <Box key={i}>{line}</Box>
           ))}
         </Box>
@@ -2177,28 +2295,54 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           pr: fields.logo && logoDataUrl && (logoPos?.x ?? 82) > 50 ? `${mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100) * 1.4}px` : 0,
           pl: fields.logo && logoDataUrl && (logoPos?.x ?? 82) <= 50 ? `${mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100) * 1.4}px` : 0,
         }}>
-          <Barcode
+          <MemoBarcode
             value={labelText.code || labelText.name}
-            format="CODE128"
             width={1.3}
             height={Math.max(20, mmToPx(height) * 0.18)}
             fontSize={Math.max(8, appearance.fontSize - 5)}
-            margin={0}
-            background="transparent"
             lineColor={appearance.text}
           />
         </Box>
       )}
-      {(fields.action && labelText.action) || (fields.message && labelText.message) ? (
+      {fields.action && labelText.action ? (
         <Box sx={{
           mt: "auto", width: "100%", bgcolor: appearance.accent, color: "#fff",
           WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
           fontWeight: 800, fontSize: `${appearance.fontSize + 1}px`,
           textAlign: "center", borderRadius: "3px", py: 0.5, letterSpacing: 0.5,
         }}>
-          {fields.action && labelText.action ? labelText.action : labelText.message}
+          {labelText.action}
         </Box>
       ) : null}
+      {fields.message && labelText.message && (
+        <Box sx={{
+          position: "absolute",
+          left: `${(messagePos?.x ?? 50)}%`, top: `${(messagePos?.y ?? 90)}%`,
+          transform: "translate(-50%, -50%)",
+          width: "88%",
+          bgcolor: appearance.accent, color: "#fff",
+          WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
+          fontWeight: 800, fontSize: `${appearance.fontSize + 1}px`,
+          textAlign: "center", borderRadius: "3px", py: 0.5, letterSpacing: 0.5,
+        }}>
+          {labelText.message}
+        </Box>
+      )}
     </Box>
   );
 }
+
+// Memoized so dragging an unrelated slider (logo/message position, etc.) or
+// typing in an unrelated field doesn't regenerate this SVG — it only
+// recomputes when the actual QR value/size change.
+const MemoQRCode = React.memo(function MemoQRCode({ value, size }) {
+  return <QRCodeSVG value={value} size={size} level="H" />;
+});
+
+// Same reasoning as MemoQRCode, for the linear barcode.
+const MemoBarcode = React.memo(function MemoBarcode({ value, width, height, fontSize, lineColor }) {
+  return (
+    <Barcode value={value} format="CODE128" width={width} height={height} fontSize={fontSize}
+      margin={0} background="transparent" lineColor={lineColor} />
+  );
+});
