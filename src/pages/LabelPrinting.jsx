@@ -35,6 +35,8 @@ import {
   DialogContent,
   DialogActions,
   Link,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import PrintIcon from "@mui/icons-material/Print";
@@ -70,6 +72,7 @@ import { useNavigate } from "react-router-dom";
 import { collection, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getDrugCategories } from "../data/getDrugCategories";
+import { findTallManSuggestion } from "../data/tallManDrugs";
 
 // أيقونة "Look Alike" مرسومة يدوي عشان تطابق نفس شكلها بالانفنتوري بالضبط
 // (نفس الـ SVG المستخدم هناك — عين + بؤبؤ فيه "لمعة" بالزاوية)
@@ -354,6 +357,10 @@ export default function LabelPrinting() {
   const navigate = useNavigate();
   const [medicines, setMedicines] = useState([]);
   const [medicinesLoading, setMedicinesLoading] = useState(true);
+  // تنبيه هادئ لو حفظ إعداد (شعار الصيدلية أو رسالة QR) فشل فعليًا بفايرستور
+  // — بدونه، الإعداد يضل ظاهر بالشاشة (لأنه انحفظ محليًا فورًا) والمستخدم
+  // يفتكر إنه انحفظ بالسيرفر وهو ما انحفظ، ويكتشف بس بعد تحديث الصفحة
+  const [settingsSaveError, setSettingsSaveError] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(0);
@@ -366,6 +373,25 @@ export default function LabelPrinting() {
 
   const [fields, setFields] = useState(TEMPLATES[0].fields);
   const [labelText, setLabelText] = useState(buildLabelText(null, "", TEMPLATES[0]));
+
+  // اقتراح Tall Man Lettering لاسم الدواء الحالي — يشتغل تلقائيًا سواء كتبتي
+  // الاسم يدويًا أو اخترتي دواء من القائمة تحت، لأن الاثنين يحدّثون
+  // labelText.name بنفس الطريقة
+  const tallManSuggestion = useMemo(
+    () => findTallManSuggestion(labelText.name),
+    [labelText.name]
+  );
+
+  // يستبدل بداية الاسم بصيغة Tall Man الرسمية، ويسيب الباقي (التركيز/الشكل
+  // الصيدلاني) زي ما هو — بما إن الاستبدال بس بحروف كبيرة/صغيرة، طول النص
+  // ما يتغير فنقدر نعتمد على نفس عدد الأحرف
+  function applyTallManCasing() {
+    if (!tallManSuggestion) return;
+    const tallManName = tallManSuggestion.tallManName;
+    const current = labelText.name;
+    const updated = tallManName + current.slice(tallManName.length);
+    setLabelText((prev) => ({ ...prev, name: updated }));
+  }
 
   const [appearance, setAppearance] = useState({
     bg: TEMPLATES[0].bg, text: TEMPLATES[0].text, accent: TEMPLATES[0].accent,
@@ -486,6 +512,7 @@ export default function LabelPrinting() {
       setQrMessageSaved(true);
     } catch (err) {
       console.error("Failed to save QR message:", err);
+      setSettingsSaveError(true);
     }
   }
 
@@ -530,6 +557,7 @@ export default function LabelPrinting() {
         await setDoc(doc(db, "settings", "labelBranding"), { logoDataUrl: reader.result }, { merge: true });
       } catch (err) {
         console.error("Failed to save logo to Firestore:", err);
+        setSettingsSaveError(true);
       }
     };
     reader.readAsDataURL(file);
@@ -873,6 +901,29 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                       <DebouncedTextField fullWidth multiline minRows={2} maxRows={5} label="Medication Name" sx={{ mt: 1 }}
                         helperText="Edit freely — trim the strength/dosage if you don't want it shown, or press Enter to control the line breaks yourself."
                         value={labelText.name} onCommit={(v) => setLabelText({ ...labelText, name: v })} />
+                    )}
+                    {/* اقتراح Tall Man Lettering: يطلع بس لو الاسم موجود بقائمة
+                        Sound-Alike المعتمدة بسياسة المستشفى، ويختفي أول ما
+                        الاسم أصلاً مكتوب بنفس الصيغة الصحيحة */}
+                    {fields.name && tallManSuggestion && (
+                      <Box
+                        onClick={applyTallManCasing}
+                        sx={{
+                          display: "flex", alignItems: "flex-start", gap: 0.7,
+                          mt: 1, mb: 0.5, px: 1.2, py: 0.8,
+                          bgcolor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "8px",
+                          cursor: "pointer", "&:hover": { bgcolor: "#FEF3C7" },
+                        }}
+                      >
+                        <WarningAmberIcon sx={{ fontSize: 16, color: "#B45309", mt: "1px" }} />
+                        <Typography sx={{ fontSize: 12, color: "#78350F", lineHeight: 1.5 }}>
+                          Sound-Alike — Tall Man Lettering: <b>{tallManSuggestion.tallManName}</b>
+                          {tallManSuggestion.confusedWith.length > 0 && (
+                            <> — confused with: <b>{tallManSuggestion.confusedWith.join(", ")}</b></>
+                          )}
+                          {" — "}<u>click to apply</u>
+                        </Typography>
+                      </Box>
                     )}
                     {fields.action && expandedField === "action" && (
                       <DebouncedTextField fullWidth size="small" label="Action / Instruction" sx={{ mt: 1.5 }}
@@ -1611,6 +1662,24 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
             ))}
       </Box>
+
+      {/* إشعار هادئ لو حفظ إعداد (شعار/رسالة QR) فشل فعليًا بالخلفية - نفس
+          شكل وموقع إشعار مشابه بالانفنتوري، بدون أي لون تحذيري مزعج */}
+      <Snackbar
+        open={settingsSaveError}
+        autoHideDuration={5000}
+        onClose={() => setSettingsSaveError(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSettingsSaveError(false)}
+          severity="info"
+          variant="filled"
+          sx={{ bgcolor: "#334155" }}
+        >
+          Change wasn't saved — weak internet connection, please try again
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }

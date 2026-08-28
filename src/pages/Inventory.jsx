@@ -99,18 +99,26 @@ async function syncMedicinesToFirestore(newMedicines, previousIds, lastSyncedCon
   const newIds = new Set(withIds.map((m) => m.id));
   const idsToDelete = [...(previousIds || [])].filter((id) => !newIds.has(id));
 
-  const writes = [];
+  // نفس إصلاح "حذف الكل" و"تفريغ السلة" - دفعات (batch) بدل مئات الطلبات
+  // المتوازية بنفس اللحظة. هذي الدالة بالذات هي العمود الفقري لأي حفظ عادي
+  // بالتطبيق (إضافة/تعديل/استيراد إكسل كبير)، فأثرها أوسع من أي مكان ثاني
+  const ops = [];
   withIds.forEach((m) => {
     const serialized = contentMap.get(m.id);
     if (!lastSyncedContent || lastSyncedContent.get(m.id) !== serialized) {
-      writes.push(setDoc(doc(db, MEDICINES_COLLECTION, m.id), m));
+      ops.push((batch) => batch.set(doc(db, MEDICINES_COLLECTION, m.id), m));
     }
   });
+  idsToDelete.forEach((id) => {
+    ops.push((batch) => batch.delete(doc(db, MEDICINES_COLLECTION, id)));
+  });
 
-  await Promise.all([
-    ...writes,
-    ...idsToDelete.map((id) => deleteDoc(doc(db, MEDICINES_COLLECTION, id))),
-  ]);
+  const CHUNK_SIZE = 450;
+  for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
+    const batch = writeBatch(db);
+    ops.slice(i, i + CHUNK_SIZE).forEach((apply) => apply(batch));
+    await batch.commit();
+  }
 
   return { ids: newIds, medicines: withIds, contentMap };
 }
@@ -731,6 +739,11 @@ const [nameSuggestion, setNameSuggestion] = useState(null);
 // سلة المهملات
 const [trashItems, setTrashItems] = useState([]);
 const [trashOpen, setTrashOpen] = useState(false);
+const [trashPage, setTrashPage] = useState(0);
+const [trashRowsPerPage, setTrashRowsPerPage] = useState(25);
+// يظهر أثناء تنفيذ "حذف الكل نهائيًا" - عشان يوضح إنه قيد التنفيذ فعليًا
+// مو إن الموقع متعلّق، خصوصًا إن العملية تاخذ وقت حقيقي لو فيه مئات العناصر
+const [emptyingTrash, setEmptyingTrash] = useState(false);
 const [pendingDelete, setPendingDelete] = useState(null);
 const [undoSnackOpen, setUndoSnackOpen] = useState(false);
 // يظهر لو ضغطنا UNDO لكن الكتابة الفعلية على فايرستور فشلت — بدون هذا
@@ -2225,7 +2238,10 @@ return (
       <Badge badgeContent={trashItems.length} color="default" max={99}>
         <Button
           variant="outlined"
-          onClick={() => setTrashOpen(true)}
+          onClick={() => {
+            setTrashPage(0);
+            setTrashOpen(true);
+          }}
           startIcon={<DeleteSweepIcon />}
           sx={{
             borderRadius: "12px",
@@ -4005,6 +4021,7 @@ return (
           <Typography>Trash is empty</Typography>
         </Box>
       ) : (
+        <>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -4018,6 +4035,7 @@ return (
             {trashItems
               .slice()
               .sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0))
+              .slice(trashPage * trashRowsPerPage, trashPage * trashRowsPerPage + trashRowsPerPage)
               .map((item) => {
                 const daysAgo = Math.floor((Date.now() - (item.deletedAt || 0)) / (24 * 60 * 60 * 1000));
                 return (
@@ -4042,12 +4060,38 @@ return (
               })}
           </TableBody>
         </Table>
+        <TablePagination
+          component="div"
+          count={trashItems.length}
+          page={trashPage}
+          onPageChange={(e, newPage) => setTrashPage(newPage)}
+          rowsPerPage={trashRowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setTrashRowsPerPage(parseInt(e.target.value, 10));
+            setTrashPage(0);
+          }}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+        />
+        </>
       )}
     </DialogContent>
     <DialogActions sx={{ p: 2 }}>
       {trashItems.length > 0 && (
-        <Button color="error" onClick={handleEmptyTrash} sx={{ textTransform: "none", fontWeight: 600, mr: "auto" }}>
-          Delete All Permanently
+        <Button
+          color="error"
+          disabled={emptyingTrash}
+          startIcon={emptyingTrash ? <CircularProgress size={16} color="error" /> : null}
+          onClick={async () => {
+            setEmptyingTrash(true);
+            try {
+              await handleEmptyTrash();
+            } finally {
+              setEmptyingTrash(false);
+            }
+          }}
+          sx={{ textTransform: "none", fontWeight: 600, mr: "auto" }}
+        >
+          {emptyingTrash ? "Deleting..." : "Delete All Permanently"}
         </Button>
       )}
       <Button onClick={() => setTrashOpen(false)} sx={{ textTransform: "none" }}>
