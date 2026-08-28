@@ -122,7 +122,7 @@ export default function Support() {
           </Box>
         </Paper>
 
-        {/* Right Card: System Resources (files only — search tool moved to its own standalone card below) */}
+        {/* Right Card: System Resources (Files + New Search-Enabled Policies Drive) */}
         <Paper 
           elevation={0} 
           sx={{ 
@@ -138,7 +138,7 @@ export default function Support() {
         >
           <Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 2 }}>
-              <FolderDown size={22} color="#0284c7" />
+              <FolderDown size={22} color="#1976d2" />
               <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#0f172a" }}>
                 System Resources
               </Typography>
@@ -150,8 +150,7 @@ export default function Support() {
             {/* Resource Cards Stack */}
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
 
-              {/* Resource 1: System Presentation (لسا ما جهزناه — نعرضه
-                  باهت وغير قابل للنقر، مع "Not available currently") */}
+              {/* Resource 1: System Presentation */}
               <Paper 
                 elevation={0} 
                 sx={{ 
@@ -194,11 +193,11 @@ export default function Support() {
                   display: "block",
                   textDecoration: "none",
                   transition: "all 0.2s ease",
-                  "&:hover": { borderColor: "#0284c7", bgcolor: "#f0f9ff" }
+                  "&:hover": { borderColor: "#1976d2", bgcolor: "#f0f9ff" }
                 }}
               >
                 <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                  <FileText size={18} color="#0284c7" style={{ marginTop: 2 }} />
+                  <FileText size={18} color="#1976d2" style={{ marginTop: 2 }} />
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#0f172a", mb: 0.5 }}>
                       Medication Classification Reference
@@ -207,7 +206,7 @@ export default function Support() {
                       Reference used for medication classification within the system.
                     </Typography>
                   </Box>
-                  <ExternalLink size={15} color="#0284c7" style={{ marginTop: 2, flexShrink: 0 }} />
+                  <ExternalLink size={15} color="#1976d2" style={{ marginTop: 2, flexShrink: 0 }} />
                 </Box>
               </Paper>
 
@@ -226,11 +225,11 @@ export default function Support() {
                   display: "block",
                   textDecoration: "none",
                   transition: "all 0.2s ease",
-                  "&:hover": { borderColor: "#0284c7", bgcolor: "#f0f9ff" }
+                  "&:hover": { borderColor: "#1976d2", bgcolor: "#f0f9ff" }
                 }}
               >
                 <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                  <FileText size={18} color="#0284c7" style={{ marginTop: 2 }} />
+                  <FileText size={18} color="#1976d2" style={{ marginTop: 2 }} />
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#0f172a", mb: 0.5 }}>
                       Medication Database & Codes
@@ -239,7 +238,41 @@ export default function Support() {
                       Medication list and corresponding system codes.
                     </Typography>
                   </Box>
-                  <ExternalLink size={15} color="#0284c7" style={{ marginTop: 2, flexShrink: 0 }} />
+                  <ExternalLink size={15} color="#1976d2" style={{ marginTop: 2, flexShrink: 0 }} />
+                </Box>
+              </Paper>
+
+              {/* Resource 4: Official Policies Archive (Search-Enhanced Drive) */}
+              <Paper 
+                component="a"
+                href="https://drive.google.com/drive/folders/1zBLxgT5dDF1D_QnWrYdh8gxCKohtCJtn"
+                target="_blank"
+                rel="noopener noreferrer"
+                elevation={0} 
+                sx={{ 
+                  p: 2, 
+                  borderRadius: 3, 
+                  bgcolor: "#faf5ff", 
+                  border: "1.5px solid #e9d5ff",
+                  display: "block",
+                  textDecoration: "none",
+                  transition: "all 0.2s ease",
+                  "&:hover": { borderColor: "#9333ea", bgcolor: "#f3e8ff" }
+                }}
+              >
+                <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
+                  <Box sx={{ color: "#9333ea", mt: 0.2 }}>
+                    <Search size={18} />
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#0f172a", mb: 0.5 }}>
+                      Official Policies Archive (Searchable)
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#64748b", display: "block", lineHeight: 1.4 }}>
+                      Original official policies folder with enhanced text-search capability.
+                    </Typography>
+                  </Box>
+                  <ExternalLink size={15} color="#9333ea" style={{ marginTop: 2, flexShrink: 0 }} />
                 </Box>
               </Paper>
 
@@ -248,55 +281,6 @@ export default function Support() {
         </Paper>
 
       </Box>
-
-      {/* Standalone Card: Quick Classification Search Tool — reads live from the same
-          drugCategories.js used for automatic classification, so there is only ONE
-          source of truth. Uses react-router navigation instead of a raw <a> link. */}
-      <Paper
-        component={RouterLink}
-        to="/classification-search"
-        elevation={0}
-        sx={{
-          p: 3,
-          borderRadius: 4,
-          bgcolor: "#faf5ff",
-          border: "1.5px solid #e9d5ff",
-          display: "flex",
-          alignItems: "center",
-          gap: 2.5,
-          textDecoration: "none",
-          mb: 4,
-          transition: "all 0.2s ease",
-          boxShadow: "0 4px 6px -1px rgba(147, 51, 234, 0.04)",
-          "&:hover": { borderColor: "#9333ea", bgcolor: "#f3e8ff", boxShadow: "0 6px 12px -2px rgba(147, 51, 234, 0.12)" }
-        }}
-      >
-        <Box
-          sx={{
-            p: 1.6,
-            bgcolor: "#9333ea",
-            color: "#ffffff",
-            borderRadius: 3,
-            display: "flex",
-            flexShrink: 0,
-            boxShadow: "0 6px 10px -2px rgba(147, 51, 234, 0.3)"
-          }}
-        >
-          <Search size={22} />
-        </Box>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: "#0f172a", mb: 0.3 }}>
-            Quick Classification Search Tool
-          </Typography>
-          <Typography variant="body2" sx={{ color: "#64748b", lineHeight: 1.5, mb: 0.5 }}>
-            Search directly from the system's live classification database and see every category a medication falls under.
-          </Typography>
-          <Typography variant="caption" sx={{ color: "#a855f7", fontWeight: 700, display: "block" }}>
-            For quick reference only — always confirm against the official policy for critical decisions.
-          </Typography>
-        </Box>
-        <ExternalLink size={18} color="#9333ea" style={{ flexShrink: 0 }} />
-      </Paper>
 
       {/* Subtle Footer */}
       <Divider sx={{ my: 3, borderColor: "#e2e8f0" }} />

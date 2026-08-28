@@ -4,7 +4,6 @@
 // الرسمية المعتمدة بسياسة المستشفى (APP 20(02): Handling Look-Alike
 // Sound-Alike Medications، وAPP 18(02): High-Alert Medications). كل
 // مجموعة أسماء يسهل الخلط بينها صوتيًا، بنفس الأحرف الكبيرة المعتمدة
-// بالسياسة بالضبط — منقولة حرفيًا من الجدول الرسمي، بدون أي تعديل أو تخمين
 export const TALL_MAN_GROUPS = [
   ["AcetaZOLAMIDE", "AcetaMINOPHEN"],
   ["Acyclovir", "VALAciclovir"],

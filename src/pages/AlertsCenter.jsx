@@ -31,7 +31,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import EventBusyIcon from "@mui/icons-material/EventBusy";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
-
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import useInventoryAlerts from "../hooks/useInventoryAlerts";
 
 import {
@@ -82,10 +82,11 @@ const REMINDER_TYPES = [
 
 
 const cardSx = {
-  borderRadius: "18px",
-  border: "1px solid #E7EBF0",
+  borderRadius: "20px",
+  border: "1px solid #E2E8F0",
   backgroundColor: "#FFFFFF",
-  boxShadow: "0 3px 16px rgba(16,24,40,0.035)",
+  boxShadow: "0 4px 20px rgba(15, 23, 42, 0.03)",
+  overflow: "hidden",
 };
 
 
@@ -342,46 +343,59 @@ export default function AlertsCenter() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            mb: 3.5,
-            pb: 2.5,
-            borderBottom:
-              "1px solid #E8EDF2",
+            mb: 4,
+            pb: 3,
+            borderBottom: "1px solid #E2E8F0",
           }}
         >
 
-          <Box>
-
-            <Typography
-              sx={{
-                fontSize: {
-                  xs: 24,
-                  md: 28,
-                },
-                fontWeight: 800,
-                color: "#172B4D",
-                letterSpacing: "-0.7px",
-                lineHeight: 1.2,
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2.5 }}>
+            <Box 
+              sx={{ 
+                p: 2, 
+                bgcolor: "#1976d2", 
+                color: "#ffffff", 
+                borderRadius: 3.5, 
+                display: "flex",
+                boxShadow: "0 10px 15px -3px rgba(25, 118, 210, 0.25)"
               }}
             >
-              Alerts & Reminders
-            </Typography>
+              <NotificationsActiveIcon sx={{ fontSize: 30 }} />
+            </Box>
 
-            <Typography
-              sx={{
-                mt: 0.7,
-                fontSize: 13,
-                color: "#8A96A8",
-              }}
-            >
-              Manage reminders and inventory alerts
-            </Typography>
+            <Box>
+              <Typography
+                sx={{
+                  fontSize: {
+                    xs: 24,
+                    md: 28,
+                  },
+                  fontWeight: 800,
+                  color: "#0F172A",
+                  letterSpacing: "-0.5px",
+                  lineHeight: 1.2,
+                }}
+              >
+                Alerts & Reminders
+              </Typography>
 
+              <Typography
+                sx={{
+                  mt: 0.5,
+                  fontSize: 13.5,
+                  color: "#64748b",
+                  fontWeight: 500,
+                }}
+              >
+                Manage reminders and track critical inventory timelines
+              </Typography>
+            </Box>
           </Box>
 
 
           <Stack
             direction="row"
-            spacing={1}
+            spacing={1.5}
             alignItems="center"
           >
 
@@ -392,18 +406,18 @@ export default function AlertsCenter() {
                   setSettingsOpen(true)
                 }
                 sx={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: "11px",
+                  width: 44,
+                  height: 44,
+                  borderRadius: "12px",
                   border:
-                    "1px solid #E0E6ED",
+                    "1px solid #E2E8F0",
                   backgroundColor:
                     "#FFFFFF",
-                  color: "#667085",
+                  color: "#475569",
 
                   "&:hover": {
                     backgroundColor:
-                      "#F4F7FA",
+                      "#F8FAFC",
                     borderColor:
                       "#CBD5E1",
                   },
@@ -411,7 +425,7 @@ export default function AlertsCenter() {
               >
                 <SettingsIcon
                   sx={{
-                    fontSize: 20,
+                    fontSize: 21,
                   }}
                 />
               </IconButton>
@@ -428,19 +442,19 @@ export default function AlertsCenter() {
                 )
               }
               sx={{
-                height: 42,
-                px: 2,
-                borderRadius: "11px",
+                height: 44,
+                px: 2.5,
+                borderRadius: "12px",
                 textTransform: "none",
                 fontWeight: 700,
                 backgroundColor:
-                  colors.primary,
+                  "#1976d2",
                 boxShadow:
-                  "0 4px 12px rgba(25,118,210,.16)",
+                  "0 4px 14px rgba(25, 118, 210, 0.25)",
 
                 "&:hover": {
                   backgroundColor:
-                    colors.primary,
+                    "#0369a1",
                 },
               }}
             >
