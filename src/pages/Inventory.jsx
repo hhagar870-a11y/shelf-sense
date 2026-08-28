@@ -163,7 +163,15 @@ async function permanentlyDeleteFromTrash(id) {
 }
 
 async function emptyTrashInFirestore(items) {
-  await Promise.all(items.map((item) => deleteDoc(doc(db, TRASH_COLLECTION, String(item.id)))));
+  // نفس إصلاح "حذف الكل" بالانفنتوري - دفعات بدل مئات الطلبات المتوازية
+  const CHUNK_SIZE = 450;
+  for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+    const batch = writeBatch(db);
+    items.slice(i, i + CHUNK_SIZE).forEach((item) => {
+      batch.delete(doc(db, TRASH_COLLECTION, String(item.id)));
+    });
+    await batch.commit();
+  }
 }
 
 // تنظيف تلقائي لأي عنصر بسلة المهملات أقدم من ٣٠ يوم — نسويها وقت فتح
@@ -175,7 +183,14 @@ async function cleanupOldTrashItems() {
     const cutoff = Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
     const expired = items.filter((item) => (item.deletedAt || 0) < cutoff);
     if (expired.length > 0) {
-      await Promise.all(expired.map((item) => deleteDoc(doc(db, TRASH_COLLECTION, String(item.id)))));
+      const CHUNK_SIZE = 450;
+      for (let i = 0; i < expired.length; i += CHUNK_SIZE) {
+        const batch = writeBatch(db);
+        expired.slice(i, i + CHUNK_SIZE).forEach((item) => {
+          batch.delete(doc(db, TRASH_COLLECTION, String(item.id)));
+        });
+        await batch.commit();
+      }
     }
     return items.filter((item) => (item.deletedAt || 0) >= cutoff);
   } catch (err) {

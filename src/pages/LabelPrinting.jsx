@@ -402,7 +402,7 @@ export default function LabelPrinting() {
   // medicine name up/down. It now has its own free-floating position, same
   // as the logo/QR, so it never disturbs the rest of the layout.
   const [messagePos, setMessagePos] = useState({ x: 50, y: 90 });
-  const [namePos, setNamePos] = useState({ x: 50, y: 35 });
+  const [namePos, setNamePos] = useState({ x: 50, y: 22 });
   // Live preview values the on-screen card follows WHILE dragging a slider —
   // the committed logoPos/qrPos (which re-renders the whole editor) only
   // updates once, on release.
@@ -707,7 +707,7 @@ export default function LabelPrinting() {
   }
 
   useEffect(() => {
-    if (!fields.logo && !fields.qr && activeTab === "branding") setActiveTab("content");
+    if (!fields.logo && !fields.qr && !fields.name && activeTab === "branding") setActiveTab("content");
   }, [fields.logo, activeTab]);
 
   useEffect(() => {
@@ -825,7 +825,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 sx={{ borderBottom: "1px solid #e5e7eb", mb: 2, minHeight: 40, "& .MuiTabs-flexContainer": { flexWrap: "wrap" } }}
               >
                 <Tab value="content" label="Content" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700 }} />
-                {(fields.logo || fields.qr) && (
+                {(fields.logo || fields.qr || fields.name) && (
                   <Tab value="branding" label="✎ Position" sx={{
                     textTransform: "none", minHeight: 40, fontWeight: 700,
                     color: activeTab === "branding" ? "#fff" : "#1D4ED8",
@@ -864,7 +864,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                         Note: if printed very small, some mobile phone cameras may not be able to scan this QR code.
                       </Typography>
                     )}
-                    {(fields.logo || fields.qr || fields.message) && (
+                    {(fields.logo || fields.qr || fields.message || fields.name) && (
                       <Typography variant="caption" sx={{ color: "#1D4ED8", display: "block", mt: -0.5, mb: 1, ml: 4, fontWeight: 600 }}>
                         → Edit position & size in the ✎ Position tab above
                       </Typography>
@@ -2250,7 +2250,7 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         // own just because some other field got turned on or off.
         <Box sx={{
           position: "absolute",
-          left: `${namePos?.x ?? 50}%`, top: `${namePos?.y ?? 35}%`,
+          left: `${namePos?.x ?? 50}%`, top: `${namePos?.y ?? 22}%`,
           transform: "translate(-50%, -50%)",
           width: "88%",
           fontWeight: appearance.bold ? 800 : 600,
