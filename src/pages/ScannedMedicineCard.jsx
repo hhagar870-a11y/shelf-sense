@@ -87,7 +87,13 @@ export default function ScannedMedicineCard({ scannedCode }) {
 
   const result = useMemo(() => {
     if (!codeToLookup || loading) return null;
-    const med = medicines.find((m) => String(m.code) === codeToLookup);
+    // نبحث بالكود أول (Nupco Code)، وبس لو الكود موجود فعليًا بالدواء
+    // (مو فاضي) — عشان أدوية بدون كود ما تتصادم مع بعضها بالخطأ. لو ما
+    // فيه تطابق بالكود، نبحث بالاسم بالضبط (هذا اللي يستخدمه الـQR أصلاً
+    // كبديل لما الدواء ما عنده كود من الأساس)
+    const med = medicines.find(
+      (m) => (m.code && String(m.code) === codeToLookup) || m.name === codeToLookup
+    );
     if (!med) return { notFound: true, code: codeToLookup };
     const dates = med.expiryDates?.length ? med.expiryDates : [med.expiry];
     const statuses = dates.map((d) => getStatus(d));

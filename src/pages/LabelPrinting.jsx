@@ -431,7 +431,7 @@ export default function LabelPrinting() {
   const [namePos, setNamePos] = useState({ x: 50, y: 48 });
   // نسبة تكبير/تصغير خط اسم الدواء بس (100% = الحجم الافتراضي) — مستقلة عن
   // appearance.fontSize العام، بنفس فكرة logoSize
-  const [nameSize, setNameSize] = useState(100);
+  const [nameSize, setNameSize] = useState(130);
   // Live preview values the on-screen card follows WHILE dragging a slider —
   // the committed logoPos/qrPos (which re-renders the whole editor) only
   // updates once, on release.
@@ -2301,9 +2301,9 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           left: `${(qrPos?.x ?? 20)}%`, top: `${(qrPos?.y ?? 87)}%`,
           transform: "translate(-50%, -50%)",
           bgcolor: "#fff", p: "3px", borderRadius: "3px", lineHeight: 0,
-          // Faded until a real link is attached, so it visually reads as a
-          // placeholder rather than a normal, finished QR code.
-          opacity: qrUrl?.trim() ? 1 : 0.32,
+          // Faded until real content is attached (a link or a message), so
+          // it visually reads as a placeholder rather than a finished QR
+          opacity: (qrUrl?.trim() || qrMessageId) ? 1 : 0.32,
         }}>
           <MemoQRCode
             value={qrUrl?.trim()
@@ -2342,7 +2342,7 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           transform: "translate(-50%, -50%)",
           width: "88%",
           fontWeight: appearance.bold ? 800 : 600,
-          fontSize: `${(appearance.fontSize + 2) * ((nameSize ?? 100) / 100)}px`,
+          fontSize: `${(appearance.fontSize + 2) * ((nameSize ?? 130) / 100)}px`,
           lineHeight: 1.25,
           textAlign: appearance.align === "left" ? "left" : appearance.align === "right" ? "right" : "center",
         }}>
