@@ -652,6 +652,10 @@ export default function LabelPrinting() {
       // losing to whichever has leftover text.
       if (key === "message" && next.message) next.action = false;
       if (key === "action" && next.action) next.message = false;
+      // QR والباركود الطولي يشتركون بنفس مكان/حجم التحكم بالليبل (نفس
+      // qrPos/qrSize) فما ينفع الاثنين يشتغلون بنفس الوقت
+      if (key === "qr" && next.qr) next.barcode = false;
+      if (key === "barcode" && next.barcode) next.qr = false;
       return next;
     });
     // Checking an expandable field opens its panel (and closes any other,
@@ -740,7 +744,7 @@ export default function LabelPrinting() {
   }
 
   useEffect(() => {
-    if (!fields.logo && !fields.qr && !fields.name && activeTab === "branding") setActiveTab("content");
+    if (!fields.logo && !fields.qr && !fields.barcode && !fields.name && activeTab === "branding") setActiveTab("content");
   }, [fields.logo, activeTab]);
 
   useEffect(() => {
@@ -858,7 +862,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 sx={{ borderBottom: "1px solid #e5e7eb", mb: 2, minHeight: 40, "& .MuiTabs-flexContainer": { flexWrap: "wrap" } }}
               >
                 <Tab value="content" label="Content" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700 }} />
-                {(fields.logo || fields.qr || fields.name) && (
+                {(fields.logo || fields.qr || fields.barcode || fields.name) && (
                   <Tab value="branding" label="✎ Position" sx={{
                     textTransform: "none", minHeight: 40, fontWeight: 700,
                     color: activeTab === "branding" ? "#fff" : "#1D4ED8",
@@ -897,7 +901,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                         Note: if printed very small, some mobile phone cameras may not be able to scan this QR code.
                       </Typography>
                     )}
-                    {(fields.logo || fields.qr || fields.message || fields.name) && (
+                    {(fields.logo || fields.qr || fields.barcode || fields.message || fields.name) && (
                       <Typography variant="caption" sx={{ color: "#1D4ED8", display: "block", mt: -0.5, mb: 1, ml: 4, fontWeight: 600 }}>
                         → Edit position & size in the ✎ Position tab above
                       </Typography>
@@ -1007,9 +1011,9 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                   </Box>
                 )}
 
-                {activeTab === "branding" && fields.qr && (
+                {activeTab === "branding" && (fields.qr || fields.barcode) && (
                   <Box sx={{ bgcolor: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 2, p: 2, mb: fields.message ? 2 : 0 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>QR code</Typography>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>{fields.qr ? "QR code" : "Linear barcode"}</Typography>
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
                     <DebouncedSlider size="small" min={0} max={100} value={qrPos.x}
                       onLiveChange={(v) => setLiveQrPos({ ...qrPos, x: v })} onCommit={(v) => setQrPos({ ...qrPos, x: v })} sx={{ mb: 1 }} />
@@ -2374,16 +2378,16 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
       )}
       {fields.barcode && (labelText.code || labelText.name) && (
         <Box sx={{
-          width: "100%", display: "flex", justifyContent: "center", lineHeight: 0, my: 0.3,
-          // Reserve space on the logo's side so the barcode never prints under it.
-          pr: fields.logo && logoDataUrl && (logoPos?.x ?? 82) > 50 ? `${mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100) * 1.4}px` : 0,
-          pl: fields.logo && logoDataUrl && (logoPos?.x ?? 82) <= 50 ? `${mmToPx(Math.min(width, height)) * ((logoSize ?? 20) / 100) * 1.4}px` : 0,
+          position: "absolute",
+          left: `${(qrPos?.x ?? 20)}%`, top: `${(qrPos?.y ?? 87)}%`,
+          transform: "translate(-50%, -50%)",
+          bgcolor: "#fff", p: "3px", borderRadius: "3px", lineHeight: 0,
         }}>
           <MemoBarcode
             value={labelText.code || labelText.name}
-            width={1.3}
-            height={Math.max(20, mmToPx(height) * 0.18)}
-            fontSize={Math.max(8, appearance.fontSize - 5)}
+            width={Math.max(0.6, 1.3 * ((qrSize ?? 40) / 40))}
+            height={Math.max(20, mmToPx(height) * 0.18 * ((qrSize ?? 40) / 40))}
+            fontSize={Math.max(8, (appearance.fontSize - 5) * ((qrSize ?? 40) / 40))}
             lineColor={appearance.text}
           />
         </Box>

@@ -21,8 +21,11 @@ function App() {
         <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<Login />} />
         
-        {/* QR landing stays public */}
+        {/* QR landing stays public — /scan-result is the path the QR codes
+            on printed labels actually encode (see LabelPrinting.tsx); kept
+            /qr-landing too since nothing else in the app depends on it */}
         <Route path="/qr-landing" element={<QRLanding />} />
+        <Route path="/scan-result" element={<QRLanding />} />
 
         {/* Everything below requires the shared team login */}
         <Route element={<ProtectedRoute />}>
