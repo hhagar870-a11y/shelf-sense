@@ -42,9 +42,12 @@ export default function QRLanding() {
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>Shelf Sense</Typography>
-        <Typography variant="body2" sx={{ color: "#6b7280" }}>Scanned label details</Typography>
+      <Box sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Box component="img" src="/logo.png" alt="Hail Health Cluster" sx={{ width: 40, height: "auto" }} />
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>Shelf Sense</Typography>
+          <Typography variant="body2" sx={{ color: "#6b7280" }}>Scanned label details</Typography>
+        </Box>
       </Box>
 
       {messageHtml && (

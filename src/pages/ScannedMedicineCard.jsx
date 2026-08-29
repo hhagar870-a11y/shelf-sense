@@ -92,7 +92,7 @@ export default function ScannedMedicineCard({ scannedCode }) {
     // فيه تطابق بالكود، نبحث بالاسم بالضبط (هذا اللي يستخدمه الـQR أصلاً
     // كبديل لما الدواء ما عنده كود من الأساس)
     const med = medicines.find(
-      (m) => (m.code && String(m.code) === codeToLookup)
+      (m) => (m.code && m.code !== "No Code Available" && String(m.code) === codeToLookup)
         || m.name === codeToLookup
         || (m.name && m.name.toLowerCase() === codeToLookup.toLowerCase())
     );

@@ -2348,7 +2348,12 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           <MemoQRCode
             value={qrUrl?.trim()
               ? qrUrl.trim()
-              : `${typeof window !== "undefined" ? window.location.origin : ""}/scan-result?code=${encodeURIComponent(labelText.code || labelText.name)}${qrMessageId ? `&msg=${qrMessageId}` : ""}`}
+              : `${typeof window !== "undefined" ? window.location.origin : ""}/scan-result?code=${encodeURIComponent(
+                  // "No Code Available" هو نص محفوظ فعليًا كقيمة للكود لأي
+                  // دواء بدون كود حقيقي — نعامله كـ"مافيه كود" ونرجع لاسم
+                  // الدواء، وإلا كل الأدوية بدون كود تتصادم على نفس القيمة
+                  (labelText.code && labelText.code !== "No Code Available" ? labelText.code : "") || labelText.name
+                )}${qrMessageId ? `&msg=${qrMessageId}` : ""}`}
             size={Math.max(40, mmToPx(Math.min(width, height)) * ((qrSize ?? 40) / 100))}
           />
         </Box>
