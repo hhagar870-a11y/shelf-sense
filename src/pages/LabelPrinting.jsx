@@ -24,6 +24,8 @@ import {
   Button,
   Checkbox,
   FormControlLabel,
+  Radio,
+  RadioGroup,
   Slider,
   ToggleButton,
   ToggleButtonGroup,
@@ -420,6 +422,10 @@ export default function LabelPrinting() {
   const [logoSize, setLogoSize] = useState(20);
   const [logoBg, setLogoBg] = useState(true); // white backing behind the logo, like the approved sticker
   const [qrCustomUrl, setQrCustomUrl] = useState("");
+  // اختيار صريح: يفتح صفحة معلومات الدواء (الافتراضي) أو رابط مخصص —
+  // منفصل عن محتوى الرابط نفسه، عشان اختيار "رابط مخصص" يبين حقل الكتابة
+  // فورًا حتى قبل لا تكتب فيه أي شيء
+  const [qrLinkMode, setQrLinkMode] = useState("info");
   const [qrSize, setQrSize] = useState(35);
   // Opposite corner from the logo's default, so they never start out overlapping.
   const [qrPos, setQrPos] = useState({ x: 20, y: 87 });
@@ -493,7 +499,14 @@ export default function LabelPrinting() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [batch, setBatch] = useState([]);
   const [qrMessageHtml, setQrMessageHtml] = useState("");
-  const [qrMessageId] = useState(() => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  // معرّف الرسالة صار مربوط بهوية الدواء نفسه (Firestore id) بدل رقم عشوائي
+  // ثابت طول الجلسة — قبل كذا، أي دواءين تحررينهم بنفس الجلسة كانوا
+  // يتشاركون نفس صندوق الرسالة، فرسالة دواء تظهر فوق دواء ثاني بالخطأ
+  const blankSessionId = useRef(`blank_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  const qrMessageId = useMemo(
+    () => (selectedMed?.id ? `msg_${selectedMed.id}` : `msg_${blankSessionId.current}`),
+    [selectedMed?.id]
+  );
   const [qrMessageSaved, setQrMessageSaved] = useState(false);
   // The contentEditable box used to call setQrMessageHtml on every single
   // keystroke, which re-rendered the whole heavy editor tree each time and
@@ -629,6 +642,12 @@ export default function LabelPrinting() {
   function generateForDate(med, expiry, status) {
     setSelectedMed(med);
     setSelectedDate(expiry);
+    // ننظف رسالة QR والرابط المخصص لما نتحول لدواء ثاني — هذي كانت تبقى
+    // معلّقة من الدواء السابق وتظهر بالخطأ فوق الدواء الجديد
+    setQrMessageHtml("");
+    setQrMessageSaved(false);
+    setQrCustomUrl("");
+    setQrLinkMode("info");
     const idx = status === "Expired" ? 1 : 0;
     const tpl = TEMPLATES[idx];
     setTemplateIndex(idx);
@@ -945,14 +964,34 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                     )}
                     {fields.qr && expandedField === "qr" && (
                       <>
-                        <DebouncedTextField fullWidth size="small" label="Link for this QR code" sx={{ mt: 1.5 }}
-                          placeholder="Attach the link this QR should open — e.g. https://..."
-                          helperText={qrCustomUrl.trim()
-                            ? "Scanning the QR will open this link."
-                            : "Nothing attached yet — this label's QR will auto-link to this medicine's own info page until you add one."}
-                          value={qrCustomUrl} onCommit={(v) => setQrCustomUrl(v)} />
+                        {/* اختيار صريح بين وضعين ما يتلخبطون مع بعض: يفتح
+                            صفحة معلومات الدواء (الافتراضي، تتحدث تلقائيًا)،
+                            أو يفتح رابط مخصص تحددينه إنتي */}
+                        <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mt: 1.5, mb: 0.5 }}>
+                          What should this QR code open?
+                        </Typography>
+                        <RadioGroup
+                          value={qrLinkMode}
+                          onChange={(e) => {
+                            const mode = e.target.value;
+                            setQrLinkMode(mode);
+                            if (mode === "info") setQrCustomUrl("");
+                          }}
+                        >
+                          <FormControlLabel value="info" control={<Radio size="small" />}
+                            label="This medicine's info page (name, expiry, quantity — always up to date)" />
+                          <FormControlLabel value="link" control={<Radio size="small" />}
+                            label="A custom link I choose" />
+                        </RadioGroup>
 
-                        {!qrCustomUrl.trim() && (
+                        {qrLinkMode === "link" && (
+                          <DebouncedTextField fullWidth size="small" label="Link for this QR code" sx={{ mt: 1 }}
+                            placeholder="https://..."
+                            helperText="Scanning the QR will open this link."
+                            value={qrCustomUrl} onCommit={(v) => setQrCustomUrl(v)} />
+                        )}
+
+                        {qrLinkMode === "info" && (
                           <Box sx={{ mt: 1.5 }}>
                             <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 0.5 }}>
                               Custom message shown when the QR is scanned (optional, alongside the medicine info)
@@ -965,6 +1004,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                               ))}
                             </Box>
                             <Box
+                              key={selectedMed?.id || "blank"}
                               contentEditable
                               suppressContentEditableWarning
                               onInput={handleQrMsgInput}

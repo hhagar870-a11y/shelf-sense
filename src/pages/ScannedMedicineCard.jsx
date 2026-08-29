@@ -92,7 +92,9 @@ export default function ScannedMedicineCard({ scannedCode }) {
     // فيه تطابق بالكود، نبحث بالاسم بالضبط (هذا اللي يستخدمه الـQR أصلاً
     // كبديل لما الدواء ما عنده كود من الأساس)
     const med = medicines.find(
-      (m) => (m.code && String(m.code) === codeToLookup) || m.name === codeToLookup
+      (m) => (m.code && String(m.code) === codeToLookup)
+        || m.name === codeToLookup
+        || (m.name && m.name.toLowerCase() === codeToLookup.toLowerCase())
     );
     if (!med) return { notFound: true, code: codeToLookup };
     const dates = med.expiryDates?.length ? med.expiryDates : [med.expiry];
