@@ -237,7 +237,7 @@ const TEMPLATES = [
     icon: WarningAmberIcon,
     bg: "#FDF6EC", text: "#B3261E", accent: "#ED6C02",
     title: "NEAR EXPIRY",
-    dims: { width: 70, height: 45 },
+    dims: { width: 90, height: 58 },
     fields: { name: true, expiry: true, code: false, status: true, action: true, message: false, qr: false, barcode: false, logo: false },
     action: "USE FIRST",
   },
@@ -247,7 +247,7 @@ const TEMPLATES = [
     icon: ErrorOutline,
     bg: "#FDECEA", text: "#7A0C0C", accent: "#D32F2F",
     title: "EXPIRED",
-    dims: { width: 70, height: 45 },
+    dims: { width: 90, height: 58 },
     fields: { name: true, expiry: true, code: false, status: true, action: true, message: false, qr: false, barcode: false, logo: false },
     action: "DO NOT USE",
   },
@@ -428,7 +428,10 @@ export default function LabelPrinting() {
   // medicine name up/down. It now has its own free-floating position, same
   // as the logo/QR, so it never disturbs the rest of the layout.
   const [messagePos, setMessagePos] = useState({ x: 50, y: 90 });
-  const [namePos, setNamePos] = useState({ x: 50, y: 22 });
+  const [namePos, setNamePos] = useState({ x: 50, y: 48 });
+  // نسبة تكبير/تصغير خط اسم الدواء بس (100% = الحجم الافتراضي) — مستقلة عن
+  // appearance.fontSize العام، بنفس فكرة logoSize
+  const [nameSize, setNameSize] = useState(100);
   // Live preview values the on-screen card follows WHILE dragging a slider —
   // the committed logoPos/qrPos (which re-renders the whole editor) only
   // updates once, on release.
@@ -438,12 +441,14 @@ export default function LabelPrinting() {
   const [liveQrSize, setLiveQrSize] = useState(qrSize);
   const [liveMessagePos, setLiveMessagePos] = useState(messagePos);
   const [liveNamePos, setLiveNamePos] = useState(namePos);
+  const [liveNameSize, setLiveNameSize] = useState(nameSize);
   useEffect(() => setLiveLogoPos(logoPos), [logoPos]);
   useEffect(() => setLiveLogoSize(logoSize), [logoSize]);
   useEffect(() => setLiveQrPos(qrPos), [qrPos]);
   useEffect(() => setLiveQrSize(qrSize), [qrSize]);
   useEffect(() => setLiveMessagePos(messagePos), [messagePos]);
   useEffect(() => setLiveNamePos(namePos), [namePos]);
+  useEffect(() => setLiveNameSize(nameSize), [nameSize]);
   const [categoryChips, setCategoryChips] = useState([]);
   const [showCategoryBadge, setShowCategoryBadge] = useState(true);
   // Tracks a manually-picked category (for medicines not tagged in the
@@ -1028,7 +1033,10 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                       onLiveChange={(v) => setLiveNamePos({ ...namePos, x: v })} onCommit={(v) => setNamePos({ ...namePos, x: v })} sx={{ mb: 1 }} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
                     <DebouncedSlider size="small" min={0} max={100} value={namePos.y}
-                      onLiveChange={(v) => setLiveNamePos({ ...namePos, y: v })} onCommit={(v) => setNamePos({ ...namePos, y: v })} />
+                      onLiveChange={(v) => setLiveNamePos({ ...namePos, y: v })} onCommit={(v) => setNamePos({ ...namePos, y: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
+                    <DebouncedSlider size="small" min={50} max={200} value={nameSize}
+                      onLiveChange={(v) => setLiveNameSize(v)} onCommit={(v) => setNameSize(v)} />
                   </Box>
                 )}
 
@@ -1109,7 +1117,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} nameSize={liveNameSize} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
@@ -1215,7 +1223,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                       </Box>
                       {manualCategoryBase && (
                         <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%" }}>
-                          {["Sound Alike", "Look Alike"].filter((b) => b !== manualCategoryBase).map((b) => (
+                          {["Sound Alike", "Look Alike"].filter((b) => b !== manualCategoryBase || b === "Sound Alike").map((b) => (
                             <FormControlLabel key={b} sx={{ mx: 0 }}
                               control={<Checkbox size="small" checked={manualCategoryBadges.includes(b)}
                                 onChange={(e) => {
@@ -1619,6 +1627,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         qrSize={qrSize} qrPos={qrPos} setQrSize={setQrSize} setQrPos={setQrPos}
         messagePos={messagePos} setMessagePos={setMessagePos}
         namePos={namePos} setNamePos={setNamePos}
+        nameSize={nameSize} setNameSize={setNameSize}
       />
 
       {/* ---------- Arrange on A4 dialog ---------- */}
@@ -1643,6 +1652,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         qrPos={qrPos}
         messagePos={messagePos}
         namePos={namePos}
+        nameSize={nameSize}
         categoryChips={categoryChips}
         qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""}
       />
@@ -1653,12 +1663,12 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
           ? (printSubsetIds ? batch.filter((it) => printSubsetIds.includes(it.id)) : batch).map((item) => (
               <RotatableLabel key={item.id} rotated={item.rotated} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
                 dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
-                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} categoryChips={item.categoryChips}
+                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize} categoryChips={item.categoryChips}
                 qrMessageId={batchUnifyQr ? "" : item.qrMessageId} />
             ))
           : Array.from({ length: copies }).map((_, i) => (
               <RotatableLabel key={i} rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
-                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos}
+                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize}
                 categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
             ))}
       </Box>
@@ -1684,7 +1694,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
   );
 }
 
-function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, setLogoPos, setLogoSize, setLogoBg, qrSize, qrPos, setQrSize, setQrPos, messagePos, setMessagePos, namePos, setNamePos }) {
+function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, setLogoPos, setLogoSize, setLogoBg, qrSize, qrPos, setQrSize, setQrPos, messagePos, setMessagePos, namePos, setNamePos, nameSize, setNameSize }) {
   const [index, setIndex] = useState(0);
   const [visited, setVisited] = useState(() => new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -1698,12 +1708,14 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   const [liveQrSize, setLiveQrSize] = useState(qrSize);
   const [liveMessagePos, setLiveMessagePos] = useState(messagePos);
   const [liveNamePos, setLiveNamePos] = useState(namePos);
+  const [liveNameSize, setLiveNameSize] = useState(nameSize);
   useEffect(() => setLiveLogoPos(logoPos), [logoPos]);
   useEffect(() => setLiveLogoSize(logoSize), [logoSize]);
   useEffect(() => setLiveQrPos(qrPos), [qrPos]);
   useEffect(() => setLiveQrSize(qrSize), [qrSize]);
   useEffect(() => setLiveMessagePos(messagePos), [messagePos]);
   useEffect(() => setLiveNamePos(namePos), [namePos]);
+  useEffect(() => setLiveNameSize(nameSize), [nameSize]);
   // Once the person turns QR on for one card, keep it on as they move
   // forward through the rest — each card still gets its own blank link.
   const [qrStickyOn, setQrStickyOn] = useState(false);
@@ -1793,7 +1805,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                         labelText={current.labelText} fields={current.fields} appearance={current.appearance}
                         dims={current.dims} orientation={current.orientation}
                         logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg}
-                        qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos}
+                        qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} nameSize={liveNameSize}
                         categoryChips={current.categoryChips} qrMessageId={batchUnifyQr ? "" : current.qrMessageId} />
                     </ScaledPreview>
                     <Typography sx={{ fontWeight: 700, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{current.previewName}</Typography>
@@ -1866,7 +1878,10 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                       onLiveChange={(v) => setLiveNamePos({ ...namePos, x: v })} onCommit={(v) => setNamePos({ ...namePos, x: v })} />
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
                     <DebouncedSlider size="small" min={0} max={100} value={namePos.y}
-                      onLiveChange={(v) => setLiveNamePos({ ...namePos, y: v })} onCommit={(v) => setNamePos({ ...namePos, y: v })} />
+                      onLiveChange={(v) => setLiveNamePos({ ...namePos, y: v })} onCommit={(v) => setNamePos({ ...namePos, y: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
+                    <DebouncedSlider size="small" min={50} max={200} value={nameSize}
+                      onLiveChange={(v) => setLiveNameSize(v)} onCommit={(v) => setNameSize(v)} />
                   </Box>
                 )}
                 {logoDataUrl && (
@@ -2045,7 +2060,7 @@ function ScaledPreview({ dims, orientation, maxBox = 320, children }) {
   );
 }
 
-function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, categoryChips, qrMessageId }) {
+function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, nameSize, categoryChips, qrMessageId }) {
   const initW = orientation === "horizontal" ? dims.width : dims.height;
   const initH = orientation === "horizontal" ? dims.height : dims.width;
 
@@ -2161,7 +2176,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, a
           >
             <Box sx={{ width: box.w * PXPERMM, height: box.h * PXPERMM, pointerEvents: "none", transform: `scale(${scale})`, transformOrigin: "top left" }}>
               <RotatableLabel rotated={box.rotated} template={template} labelText={labelText} fields={fields} appearance={appearance}
-                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} categoryChips={categoryChips} qrMessageId={qrMessageId} />
+                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize} categoryChips={categoryChips} qrMessageId={qrMessageId} />
             </Box>
             <Box
               onMouseDown={startResize}
@@ -2220,7 +2235,7 @@ function RotatableLabel({ rotated, dims, orientation, ...rest }) {
   );
 }
 
-function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, categoryChips, qrMessageId }) {
+function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, nameSize, categoryChips, qrMessageId }) {
   const Icon = template.icon;
   const width = orientation === "horizontal" ? dims.width : dims.height;
   const height = orientation === "horizontal" ? dims.height : dims.width;
@@ -2319,11 +2334,11 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         // own just because some other field got turned on or off.
         <Box sx={{
           position: "absolute",
-          left: `${namePos?.x ?? 50}%`, top: `${namePos?.y ?? 22}%`,
+          left: `${namePos?.x ?? 50}%`, top: `${namePos?.y ?? 48}%`,
           transform: "translate(-50%, -50%)",
           width: "88%",
           fontWeight: appearance.bold ? 800 : 600,
-          fontSize: `${appearance.fontSize + 2}px`,
+          fontSize: `${(appearance.fontSize + 2) * ((nameSize ?? 100) / 100)}px`,
           lineHeight: 1.25,
           textAlign: appearance.align === "left" ? "left" : appearance.align === "right" ? "right" : "center",
         }}>
