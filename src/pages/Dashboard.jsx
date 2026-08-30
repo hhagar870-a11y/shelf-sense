@@ -696,35 +696,51 @@ function Dashboard() {
     expired,
   } = useMemo(() => {
 
-    const today = new Date();
-
     let safe = 0;
     let near = 0;
     let exp = 0;
 
 
+    // نفس دالة getStatus المستخدمة بالضبط بصفحة الانفنتوري — قبل كذا كان
+    // الداشبورد يقارن الوقت الحالي (فيه الساعة) مباشرة بتاريخ الانتهاء بدون
+    // أي تطبيع، ويحسب ٩٠ يوم ثابتة بدل ٣ أشهر تقويمية — هذا كان يخلي دواء
+    // ينتهي اليوم نفسه يُحسب "منتهي" بالداشبورد من الصبح بينما الانفنتوري
+    // يعتبره لسا سليم لين آخر لحظة باليوم، فيصير عدّ مختلف بين الصفحتين
+    const getStatus = (expiry) => {
+      if (!expiry) return "";
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const expiryDate = new Date(expiry);
+      expiryDate.setHours(23, 59, 59, 999);
+
+      const nearExpiryThreshold = new Date(expiryDate);
+      nearExpiryThreshold.setMonth(nearExpiryThreshold.getMonth() - 3);
+      nearExpiryThreshold.setHours(0, 0, 0, 0);
+
+      if (today > expiryDate) return "Expired";
+      if (today >= nearExpiryThreshold) return "Near Expiry";
+      return "Safe";
+    };
+
     realMedicines.forEach((medicine) => {
 
-      if (!medicine.expiry) return;
+      // نفس مصدر التاريخ اللي تعتمده صفحة الانفنتوري بالضبط: أول تاريخ من
+      // expiryDates لو موجودة، وإلا الحقل القديم expiry
+      const expiry = medicine.expiryDates?.[0] || medicine.expiry;
+      if (!expiry) return;
 
-      const expiryDate = new Date(
-        medicine.expiry
-      );
+      const status = getStatus(expiry);
 
-      const days =
-        (expiryDate - today) /
-        (1000 * 60 * 60 * 24);
-
-
-      if (days < 0) {
+      if (status === "Expired") {
 
         exp++;
 
-      } else if (days <= 90) {
+      } else if (status === "Near Expiry") {
 
         near++;
 
-      } else {
+      } else if (status === "Safe") {
 
         safe++;
 
@@ -972,16 +988,19 @@ function Dashboard() {
   const expiringWithin30DaysFull = useMemo(() => {
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     return realMedicines
       .filter((medicine) => {
 
-        if (!medicine.expiry) {
+        const expiry = medicine.expiryDates?.[0] || medicine.expiry;
+        if (!expiry) {
           return false;
         }
 
         const expiryDate =
-          new Date(medicine.expiry);
+          new Date(expiry);
+        expiryDate.setHours(23, 59, 59, 999);
 
         const days =
           (expiryDate - today) /
@@ -992,8 +1011,8 @@ function Dashboard() {
       })
       .sort(
         (a, b) =>
-          new Date(a.expiry) -
-          new Date(b.expiry)
+          new Date(a.expiryDates?.[0] || a.expiry) -
+          new Date(b.expiryDates?.[0] || b.expiry)
       );
 
   }, [realMedicines]);
