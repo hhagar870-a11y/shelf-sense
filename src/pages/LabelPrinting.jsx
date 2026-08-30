@@ -383,9 +383,11 @@ export default function LabelPrinting() {
 
   // اقتراح Tall Man Lettering لاسم الدواء الحالي — يشتغل تلقائيًا سواء كتبتي
   // الاسم يدويًا أو اخترتي دواء من القائمة تحت، لأن الاثنين يحدّثون
-  // labelText.name بنفس الطريقة
+  // labelText.name بنفس الطريقة. المطابقة تصير على نسخة بسطر واحد (الأسطر
+  // مفصولة بمسافة) — لأن labelText.name ممكن يحتوي أسطر إنتر حقيقية
+  // (التقسيم التلقائي اسم/تركيز/شكل)، وقاعدة بيانات الأسماء متوقعة نص عادي.
   const tallManSuggestion = useMemo(
-    () => findTallManSuggestion(labelText.name),
+    () => findTallManSuggestion(labelText.name.replace(/\n/g, " ")),
     [labelText.name]
   );
 
@@ -547,6 +549,20 @@ export default function LabelPrinting() {
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter((m) => !m.isSection);
         setMedicines(list);
+        // Prune "done" marks left over from medicines that no longer exist
+        // (e.g. deleted from inventory) — otherwise they stay stuck in
+        // localStorage forever and inflate the "X of Y done" counter even
+        // though the medicine they refer to isn't in the list anymore.
+        setDoneMeds((prev) => {
+          if (prev.size === 0) return prev;
+          const liveIds = new Set(list.map((m) => m.id));
+          const next = new Set(Array.from(prev).filter((id) => liveIds.has(id)));
+          if (next.size !== prev.size) {
+            try { window.localStorage.setItem(DONE_MEDS_STORAGE_KEY, JSON.stringify(Array.from(next))); } catch {}
+            return next;
+          }
+          return prev;
+        });
       } catch (err) {
         console.error("Failed to load medicines from Firestore:", err);
       } finally {
@@ -948,7 +964,20 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                           cursor: "pointer", "&:hover": { bgcolor: "#FEF3C7" },
                         }}
                       >
-                        <WarningAmberIcon sx={{ fontSize: 16, color: "#B45309", mt: "1px" }} />
+                        <Box sx={{ position: "relative", display: "inline-flex", mt: "1px" }}>
+                          {/* حلقة نابضة تتوسّع وتختفي حوالين الأيقونة، عشان
+                              تلفت انتباه المستخدم للتنبيه بدون ما تكون مزعجة */}
+                          <Box sx={{
+                            position: "absolute", inset: 0, borderRadius: "50%",
+                            bgcolor: "#F59E0B",
+                            animation: "tallManPulse 1.6s ease-out infinite",
+                            "@keyframes tallManPulse": {
+                              "0%": { transform: "scale(1)", opacity: 0.55 },
+                              "100%": { transform: "scale(2.2)", opacity: 0 },
+                            },
+                          }} />
+                          <WarningAmberIcon sx={{ fontSize: 16, color: "#B45309", position: "relative" }} />
+                        </Box>
                         <Typography sx={{ fontSize: 12, color: "#78350F", lineHeight: 1.5 }}>
                           Sound-Alike — Tall Man Lettering: <b>{tallManSuggestion.tallManName}</b>
                           {tallManSuggestion.confusedWith.length > 0 && (

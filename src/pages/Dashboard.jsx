@@ -947,9 +947,19 @@ function Dashboard() {
     {
       title: "Total Medicines",
       value: totalMedicines,
-      desc: noExpiryDate > 0
-        ? `All medicines in inventory · ${noExpiryDate} missing an expiry date`
-        : "All medicines in inventory",
+      desc: noExpiryDate > 0 ? (
+        <>
+          All medicines in inventory ·{" "}
+          <Box
+            component="span"
+            sx={{ color: "#1565C0", fontWeight: 700 }}
+          >
+            {noExpiryDate} missing an expiry date
+          </Box>
+        </>
+      ) : (
+        "All medicines in inventory"
+      ),
       color: "#1976D2",
       bg: "#EAF4FF",
       icon: <Inventory2Icon />,

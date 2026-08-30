@@ -2521,10 +2521,19 @@ return (
         );
       }
 
-      // نفس الرقم الثابت اللي يعتمد عليه البحث برقم السطر (مو عداد يعيد
-      // البداية من 1 مع كل صفحة أو فلتر — عشان الرقم اللي تبحث فيه يطابق
-      // فعلاً الرقم اللي شايفه بعمود NO.)
-      const drugCounter = medicineLineNumbers.get(medicine.id) ?? (actualIndex + 1);
+      // لمن ما فيه فلتر ولا بحث فعّال (عرض "الكل")، نستخدم الرقم الثابت اللي
+      // يعتمد عليه البحث برقم السطر بقائمة المخزون الكاملة. لكن لمن يكون
+      // فيه فلتر تصنيف/حالة أو بحث نشط (مثل الضغط على "Safe Medicines" من
+      // الداشبورد)، لازم الترقيم يكون متسلسل 1..N ضمن النتائج المعروضة —
+      // وإلا يطلع فجوات بالأرقام (زي 45، 46، 47... 51) لأن أرقام الأدوية
+      // المستبعدة بالفلتر تظل محسوبة بترتيبها الأصلي بالقائمة الكاملة
+      const isNumberingFiltered =
+        Boolean(search && search.trim()) ||
+        selectedCategory !== "All" ||
+        selectedStatus !== "All";
+      const drugCounter = isNumberingFiltered
+        ? actualIndex + 1
+        : medicineLineNumbers.get(medicine.id) ?? (actualIndex + 1);
       const isHighlighted = medicine.id === highlightedMedicineId;
 
       return (
