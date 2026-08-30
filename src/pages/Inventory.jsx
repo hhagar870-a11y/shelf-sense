@@ -744,6 +744,9 @@ const [trashRowsPerPage, setTrashRowsPerPage] = useState(25);
 // يظهر أثناء تنفيذ "حذف الكل نهائيًا" - عشان يوضح إنه قيد التنفيذ فعليًا
 // مو إن الموقع متعلّق، خصوصًا إن العملية تاخذ وقت حقيقي لو فيه مئات العناصر
 const [emptyingTrash, setEmptyingTrash] = useState(false);
+// يظهر أثناء "Clear Inventory" (نقل كل الأدوية للسلة) - نستخدمه لعرض سبينر
+// على زر Trash نفسه لين كل الأدوية توصل فعليًا للسلة
+const [clearingInventory, setClearingInventory] = useState(false);
 const [pendingDelete, setPendingDelete] = useState(null);
 const [undoSnackOpen, setUndoSnackOpen] = useState(false);
 // يظهر لو ضغطنا UNDO لكن الكتابة الفعلية على فايرستور فشلت — بدون هذا
@@ -1504,6 +1507,7 @@ const handleDeleteAll = async () => {
 
   skipNextPersistRef.current = true;
   setMedicines([]);
+  setClearingInventory(true);
 
   try {
     // نبني كل عملية (كتابة تراش / حذف) كدالة صغيرة، ونطبقها على "دفعات"
@@ -1538,6 +1542,8 @@ const handleDeleteAll = async () => {
   } catch (err) {
     console.error("فشل نقل كل الأدوية لسلة المهملات:", err);
     setSyncErrorOpen(true);
+  } finally {
+    setClearingInventory(false);
   }
 };
 
@@ -2221,6 +2227,7 @@ return (
       <Button
         variant="outlined"
         color="error"
+        disabled={clearingInventory}
         onClick={handleDeleteAll}
         sx={{
           borderRadius: "12px",
@@ -2238,11 +2245,14 @@ return (
       <Badge badgeContent={trashItems.length} color="default" max={99}>
         <Button
           variant="outlined"
+          disabled={clearingInventory}
           onClick={() => {
             setTrashPage(0);
             setTrashOpen(true);
           }}
-          startIcon={<DeleteSweepIcon />}
+          startIcon={clearingInventory
+            ? <CircularProgress size={16} thickness={5} sx={{ color: "inherit" }} />
+            : <DeleteSweepIcon />}
           sx={{
             borderRadius: "12px",
             textTransform: "none",
@@ -2254,7 +2264,7 @@ return (
             borderColor: "#cbd5e1",
           }}
         >
-          Trash
+          {clearingInventory ? "Moving to Trash…" : "Trash"}
         </Button>
       </Badge>
     </Box>
@@ -3151,6 +3161,24 @@ return (
                       />
                     ))}
                   </Box>
+                  {/* رابط لأداة التحقق من التصنيف بصفحة الدعم — نفس الزر
+                      الموجود بصفحة طباعة الليبلز بالضبط */}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => window.open("/support", "_blank")}
+                    sx={{
+                      mt: 0.5,
+                      textTransform: "none",
+                      fontWeight: 600,
+                      borderRadius: "8px",
+                      borderColor: "#2563eb",
+                      color: "#2563eb",
+                      alignSelf: "flex-start",
+                    }}
+                  >
+                    Not sure of the category? Check it →
+                  </Button>
                 </Box>
               </Box>
             );
@@ -4080,7 +4108,6 @@ return (
         <Button
           color="error"
           disabled={emptyingTrash}
-          startIcon={emptyingTrash ? <CircularProgress size={16} color="error" /> : null}
           onClick={async () => {
             setEmptyingTrash(true);
             try {
@@ -4089,9 +4116,13 @@ return (
               setEmptyingTrash(false);
             }
           }}
-          sx={{ textTransform: "none", fontWeight: 600, mr: "auto" }}
+          sx={{
+            textTransform: "none", fontWeight: 600, mr: "auto",
+            display: "flex", alignItems: "center", gap: 1,
+          }}
         >
-          {emptyingTrash ? "Deleting..." : "Delete All Permanently"}
+          {emptyingTrash && <CircularProgress size={15} thickness={5} sx={{ color: "inherit" }} />}
+          {emptyingTrash ? "Deleting…" : "Delete All Permanently"}
         </Button>
       )}
       <Button onClick={() => setTrashOpen(false)} sx={{ textTransform: "none" }}>
