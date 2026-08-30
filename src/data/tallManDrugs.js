@@ -90,13 +90,42 @@ export const TALL_MAN_GROUPS = [
 ];
 
 // يبني خارطة بحث سريعة: اسم الدواء (بحروف صغيرة) → صيغته الرسمية بـ Tall
-// Man + بقية الأدوية اللي يشتبه فيها معه صوتيًا
+// Man + بقية الأدوية اللي يشتبه فيها معه صوتيًا.
+//
+// بعض الأدوية تتكرر بأكثر من مجموعة بالأعلى (نفس الدواء ممكن يشتبه فيه مع
+// أكثر من دواء مختلف بسياقات مختلفة — مثل omeprazole اللي موجود بمجموعة
+// ARIPiprazole/OMEprazole/... وكمان بمجموعة omeprazole/fomepizole). لو
+// استخدمنا map.set() عادي، آخر مجموعة يوصلها بالترتيب تكتب فوق الأولى
+// بالكامل — يعني تضيع باقي الأدوية المشتبهة، وممكن كمان توحّد الصيغة
+// الصحيحة بـ Tall Man casing (زي "OMEprazole") بنسخة بأحرف صغيرة كلها لو
+// المجموعة الثانية ماكانت مكتوبة بنفس الصيغة الرسمية. فبدل الاستبدال،
+// ندمج: نجمع كل الأدوية المشتبهة من كل المجموعات اللي فيها نفس الاسم،
+// ونفضّل الصيغة اللي فعلاً فيها أحرف كبيرة وصغيرة مختلطة (Tall Man) على أي
+// نسخة بأحرف صغيرة كلها أو كبيرة كلها.
+const hasTallManCasing = (s) => /[a-z]/.test(s) && /[A-Z]/.test(s);
+
 function buildLookup() {
   const map = new Map();
   TALL_MAN_GROUPS.forEach((group) => {
     group.forEach((tallManName) => {
       const key = tallManName.toLowerCase().trim();
-      map.set(key, { tallManName, confusedWith: group.filter((n) => n !== tallManName) });
+      const others = group.filter((n) => n !== tallManName);
+      const existing = map.get(key);
+
+      if (!existing) {
+        map.set(key, { tallManName, confusedWith: [...others] });
+        return;
+      }
+
+      // لو الاسم الحالي مو مكتوب بصيغة Tall Man وعندنا صيغة صحيحة محفوظة
+      // فعلاً، نحتفظ بالصحيحة. غير كذا (الجديد هو الصيغة الصحيحة، أو
+      // الاثنين بدون صيغة واضحة) ناخذ الجديد.
+      const keepExistingCasing = hasTallManCasing(existing.tallManName) && !hasTallManCasing(tallManName);
+      const mergedTallManName = keepExistingCasing ? existing.tallManName : tallManName;
+      const mergedConfusedWith = Array.from(new Set([...existing.confusedWith, ...others]))
+        .filter((n) => n.toLowerCase().trim() !== key);
+
+      map.set(key, { tallManName: mergedTallManName, confusedWith: mergedConfusedWith });
     });
   });
   return map;
