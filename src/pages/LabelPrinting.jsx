@@ -308,22 +308,10 @@ const TEMPLATES = [
   },
 ];
 
-function buildLabelText(med, expiry, template) {
-  const status = expiry ? getStatus(expiry) : "";
-  return {
-    name: med?.name || "",
-    expiry: expiry || "",
-    code: med?.code || "",
-    action: template.action || "",
-    message: "",
-    status,
-  };
-}
-
-// Splits a free-typed medication name like "Epinephrine 1mg/1ml ampoule" into
-// [Name, Strength, Dosage form] so the printed label matches the approved
-// layout (one line each). Falls back to the original text untouched if no
-// strength/form pattern is recognized, so any free text still edits fine.
+// Splits a medication name like "Epinephrine 1mg/1ml ampoule" into
+// [Name, Strength, Dosage form] to match the pharmacy's approved layout
+// (one line each). Falls back to the original text untouched if no
+// strength/form pattern is recognized.
 const DOSAGE_FORMS = [
   "ampoule", "ampule", "vial", "tablet", "tab", "capsule", "cap", "syringe", "syring",
   "injection", "inj", "cream", "gel", "ointment", "solution", "sol", "suspension", "susp",
@@ -353,6 +341,23 @@ function splitMedicationText(text) {
   const form = formIdx !== -1 ? words.slice(formIdx).join(" ") : words.slice(strengthEnd + 1).join(" ");
   const lines = [name, strength, form].filter(Boolean);
   return lines.length ? lines : [text];
+}
+
+function buildLabelText(med, expiry, template) {
+  const status = expiry ? getStatus(expiry) : "";
+  return {
+    // Auto-split into name/strength/form on separate lines by default —
+    // this is only the STARTING point, written here as real "\n"
+    // characters. From here on the pharmacist fully owns the text: they
+    // can delete a line break to merge lines with a normal space, or add
+    // their own with Enter. Nothing re-analyzes or re-splits their edits.
+    name: med?.name ? splitMedicationText(med.name).join("\n") : "",
+    expiry: expiry || "",
+    code: med?.code || "",
+    action: template.action || "",
+    message: "",
+    status,
+  };
 }
 
 export default function LabelPrinting() {
@@ -2391,7 +2396,7 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           lineHeight: 1.25,
           textAlign: appearance.align === "left" ? "left" : appearance.align === "right" ? "right" : "center",
         }}>
-          {(labelText.name.includes("\n") ? labelText.name.split("\n").filter((l) => l.trim()) : splitMedicationText(labelText.name)).map((line, i) => (
+          {(labelText.name.includes("\n") ? labelText.name.split("\n").filter((l) => l.trim()) : [labelText.name]).map((line, i) => (
             <Box key={i}>{line}</Box>
           ))}
         </Box>

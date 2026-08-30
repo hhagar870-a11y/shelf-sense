@@ -694,11 +694,17 @@ function Dashboard() {
     safeMedicines,
     nearExpiry,
     expired,
+    noExpiryDate,
   } = useMemo(() => {
 
     let safe = 0;
     let near = 0;
     let exp = 0;
+    // عدد الأدوية اللي ما عندها تاريخ انتهاء مسجّل أصلاً — هذي مو "منتهية"
+    // ولا "سليمة" ولا "قريبة الانتهاء"، فمستحيل تدخل بأي من الثلاث فئات.
+    // بدون هذا العداد، مجموع (سليم + قريب + منتهي) يطلع أقل من "Total
+    // Medicines" بدون أي تفسير واضح بالواجهة
+    let noDate = 0;
 
 
     // نفس دالة getStatus المستخدمة بالضبط بصفحة الانفنتوري — قبل كذا كان
@@ -728,7 +734,10 @@ function Dashboard() {
       // نفس مصدر التاريخ اللي تعتمده صفحة الانفنتوري بالضبط: أول تاريخ من
       // expiryDates لو موجودة، وإلا الحقل القديم expiry
       const expiry = medicine.expiryDates?.[0] || medicine.expiry;
-      if (!expiry) return;
+      if (!expiry) {
+        noDate++;
+        return;
+      }
 
       const status = getStatus(expiry);
 
@@ -753,6 +762,7 @@ function Dashboard() {
       safeMedicines: safe,
       nearExpiry: near,
       expired: exp,
+      noExpiryDate: noDate,
     };
 
   }, [realMedicines]);
@@ -937,7 +947,9 @@ function Dashboard() {
     {
       title: "Total Medicines",
       value: totalMedicines,
-      desc: "All medicines in inventory",
+      desc: noExpiryDate > 0
+        ? `All medicines in inventory · ${noExpiryDate} missing an expiry date`
+        : "All medicines in inventory",
       color: "#1976D2",
       bg: "#EAF4FF",
       icon: <Inventory2Icon />,
