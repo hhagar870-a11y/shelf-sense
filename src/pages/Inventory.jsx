@@ -18,6 +18,12 @@ let medicinesCache = null;
 let sectionsCache = null;
 
 const MEDICINES_COLLECTION = "medicines";
+// كل صف بملف إكسل يحمل كمية فعلية (شحنة جديدة وصلت) يتسجل هنا كمستند
+// مستقل ومنفصل تمامًا عن مستند الدواء نفسه — الدواء يحتفظ بحالته الحالية
+// بس (الكمية الإجمالية، آخر تاريخ انتهاء...)، بينما هذي المجموعة تحتفظ
+// بتاريخ كل استيراد على حدة (تاريخ الاستيراد + الكمية + تواريخ الانتهاء
+// المرفقة معه) عشان نقدر نعرض "هيستوري الطلبيات" لكل دواء بصفحة مسح الباركود
+const MEDICINE_BATCHES_COLLECTION = "medicineBatches";
 const SETTINGS_DOC_REF = () => doc(db, "settings", "sections");
 
 // البيانات الافتراضية اللي تظهر أول مرة بس لو قاعدة البيانات فاضية تمامًا
@@ -121,6 +127,23 @@ async function syncMedicinesToFirestore(newMedicines, previousIds, lastSyncedCon
   }
 
   return { ids: newIds, medicines: withIds, contentMap };
+}
+
+// يكتب كل "شحنة" جمعناها أثناء استيراد إكسل (سطر فيه كمية فعلية) كمستند
+// مستقل بمجموعة medicineBatches — مستند لكل شحنة، ما يتلمس أو يتحدّث بعدين،
+// فيصير سجل تاريخي دائم نقدر نعرضه لاحقًا (تاريخ وصول كل دفعة + كميتها +
+// تواريخ انتهائها) بصفحة مسح الباركود، بدون ما يأثر على مستند الدواء نفسه
+async function persistMedicineBatches(batchLog) {
+  if (!batchLog || batchLog.length === 0) return;
+  const CHUNK_SIZE = 450;
+  for (let i = 0; i < batchLog.length; i += CHUNK_SIZE) {
+    const chunk = batchLog.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+    chunk.forEach((entry) => {
+      batch.set(doc(db, MEDICINE_BATCHES_COLLECTION, crypto.randomUUID()), entry);
+    });
+    await batch.commit();
+  }
 }
 
 // يحذف مستند دواء واحد فورًا من فايرستور — نستخدمها مباشرة وقت الحذف بدل
@@ -1205,15 +1228,20 @@ const handleLabelSave = () => {
     if (duplicates.length > 0) {
       setDuplicateModalOpen(true);
     } else {
-      const result = processExcelImport(rows);
+      const batchLog = [];
+      const result = processExcelImport(rows, undefined, batchLog);
       setMedicines(result);
+      persistMedicineBatches(batchLog).catch((err) =>
+        console.error("Failed to save shipment/batch history:", err)
+      );
     }
   });
 };
 
-const processExcelImport = (rows, baseMedicines) => {
+const processExcelImport = (rows, baseMedicines, batchLog) => {
   let currentMedicines = baseMedicines ? [...baseMedicines] : [...medicines];
   let lastValidDrug = null; // مرجع لحفظ الدواء الحالي لربط التواريخ الإضافية به
+  const importedAt = new Date().toISOString(); // نفس لحظة الاستيراد لكل صفوف نفس الملف
 
   rows.forEach((item) => {
     // 1. التقاط الأعمدة بمرونة تامة (التسميات القديمة والجديدة الخاصة بشحنات المستودع)
@@ -1336,6 +1364,18 @@ const processExcelImport = (rows, baseMedicines) => {
         med.otherNames.push(incomingName);
       }
 
+      // شحنة فعلية وصلت لدواء موجود مسبقًا — نسجلها كسطر مستقل بالهيستوري
+      if (itemQty && batchLog) {
+        batchLog.push({
+          medicineId: med.id,
+          medicineName: officialName,
+          code: itemCode || "",
+          quantity: itemQty,
+          expiryDates: expiryDates.length ? expiryDates : (med.expiry ? [med.expiry] : []),
+          importedAt,
+        });
+      }
+
       lastValidDrug = med; // تحديث المرجع
     } else {
       const initialQuantities = itemQty ? splitExportedQuantities(itemQty) : ["1"];
@@ -1357,6 +1397,19 @@ const processExcelImport = (rows, baseMedicines) => {
       };
       
       currentMedicines.push(newMed);
+
+      // أول شحنة لدواء جديد بالكامل — نفس المنطق، تنسجل كأول سطر بهيستوريه
+      if (itemQty && batchLog) {
+        batchLog.push({
+          medicineId: newMed.id,
+          medicineName: officialName,
+          code: itemCode || "",
+          quantity: itemQty,
+          expiryDates: newMed.expiryDates,
+          importedAt,
+        });
+      }
+
       lastValidDrug = newMed; // حفظ المرجع لكي تستفيد منه الأسطر التي تحته مباشرة
     }
   });
@@ -3738,6 +3791,8 @@ return (
 
       setTimeout(() => {
         let currentMedicines = [...medicines];
+        const batchLog = [];
+        const importedAt = new Date().toISOString();
 
         duplicateSummary.forEach(dup => {
           const dupCode = String(dup.code || "").trim();
@@ -3779,9 +3834,21 @@ return (
               expiryDates: combinedDates.length ? combinedDates : med.expiryDates,
               expiry: combinedDates.length ? combinedDates[0] : med.expiry,
             };
+
+            if (newQtyStr) {
+              batchLog.push({
+                medicineId: med.id,
+                medicineName: med.name,
+                code: med.code || "",
+                quantity: newQtyStr,
+                expiryDates: incomingDates.length ? incomingDates : combinedDates,
+                importedAt,
+              });
+            }
           } else {
+            const newId = crypto.randomUUID();
             currentMedicines.push({
-              id: crypto.randomUUID(),
+              id: newId,
               name: dup.name,
               code: dup.code || "",
               quantity: dup.newQty,
@@ -3792,6 +3859,17 @@ return (
               otherNames: [dup.name],
               dateAdded: new Date().toISOString(),
             });
+
+            if (dup.newQty) {
+              batchLog.push({
+                medicineId: newId,
+                medicineName: dup.name,
+                code: dup.code || "",
+                quantity: dup.newQty,
+                expiryDates: (dup.expiryDates && dup.expiryDates.length) ? dup.expiryDates : [],
+                importedAt,
+              });
+            }
           }
         });
 
@@ -3812,9 +3890,13 @@ return (
         });
 
         if (remainingRows.length > 0) {
-          const finalMedicines = processExcelImport(remainingRows, currentMedicines);
+          const finalMedicines = processExcelImport(remainingRows, currentMedicines, batchLog);
           setMedicines(finalMedicines);
         }
+
+        persistMedicineBatches(batchLog).catch((err) =>
+          console.error("Failed to save shipment/batch history:", err)
+        );
 
         setIsMerging(false);
         setDuplicateModalOpen(false);

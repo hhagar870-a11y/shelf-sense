@@ -59,6 +59,7 @@ function daysUntil(dateStr) {
 export default function ScannedMedicineCard({ scannedCode }) {
   const [manualCode, setManualCode] = useState("");
   const [medicines, setMedicines] = useState([]);
+  const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const inputRef = React.useRef(null);
@@ -72,8 +73,12 @@ export default function ScannedMedicineCard({ scannedCode }) {
   useEffect(() => {
     async function fetchMedicines() {
       try {
-        const snap = await getDocs(collection(db, "medicines"));
-        setMedicines(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !m.isSection));
+        const [medsSnap, batchesSnap] = await Promise.all([
+          getDocs(collection(db, "medicines")),
+          getDocs(collection(db, "medicineBatches")),
+        ]);
+        setMedicines(medsSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !m.isSection));
+        setBatches(batchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error("Failed to load medicines from Firestore:", err);
       } finally {
@@ -101,8 +106,11 @@ export default function ScannedMedicineCard({ scannedCode }) {
     const statuses = dates.map((d) => getStatus(d));
     const categories = [...new Set(med.categories || getDrugCategories(med.name, med.code))];
     const otherNames = (med.otherNames || []).filter((n) => n && n !== med.name);
-    return { med, dates, statuses, categories, otherNames };
-  }, [codeToLookup, medicines, loading]);
+    const history = batches
+      .filter((b) => b.medicineId === med.id)
+      .sort((a, b) => new Date(b.importedAt) - new Date(a.importedAt));
+    return { med, dates, statuses, categories, otherNames, history };
+  }, [codeToLookup, medicines, batches, loading]);
 
   function goToLabel() {
     sessionStorage.setItem("labelTarget", codeToLookup);
@@ -195,6 +203,33 @@ export default function ScannedMedicineCard({ scannedCode }) {
             sx={{ textTransform: "none", fontWeight: 600, borderRadius: "8px" }}>
             Generate Label for this medicine
           </Button>
+
+          {result.history.length > 0 && (
+            <Box sx={{ mt: 2.5, pt: 2, borderTop: "1px solid #e5e7eb" }}>
+              <Typography variant="caption" sx={{ color: "#6b7280", fontWeight: 700, display: "block", mb: 1 }}>
+                Shipment History ({result.history.length})
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {result.history.map((h) => (
+                  <Box key={h.id} sx={{ p: 1.25, bgcolor: "#F8FAFC", borderRadius: 2, border: "1px solid #e5e7eb" }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        Qty: {h.quantity}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: "#9ca3af" }}>
+                        Received {h.importedAt ? new Date(h.importedAt).toLocaleDateString() : "—"}
+                      </Typography>
+                    </Box>
+                    {h.expiryDates?.length > 0 && (
+                      <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mt: 0.25 }}>
+                        Expiry: {h.expiryDates.filter(Boolean).join(", ") || "—"}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
         </Paper>
       )}
     </Box>

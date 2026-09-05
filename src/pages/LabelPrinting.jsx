@@ -240,7 +240,7 @@ const TEMPLATES = [
     bg: "#FDF6EC", text: "#B3261E", accent: "#ED6C02",
     title: "NEAR EXPIRY",
     dims: { width: 90, height: 58 },
-    fields: { name: true, expiry: true, code: false, status: true, action: true, message: false, qr: false, barcode: false, logo: false },
+    fields: { name: true, expiry: false, code: false, status: false, action: true, message: false, qr: false, barcode: false, logo: false },
     action: "USE FIRST",
   },
   {
@@ -250,7 +250,7 @@ const TEMPLATES = [
     bg: "#FDECEA", text: "#7A0C0C", accent: "#D32F2F",
     title: "EXPIRED",
     dims: { width: 90, height: 58 },
-    fields: { name: true, expiry: true, code: false, status: true, action: true, message: false, qr: false, barcode: false, logo: false },
+    fields: { name: true, expiry: false, code: false, status: false, action: true, message: false, qr: false, barcode: false, logo: false },
     action: "DO NOT USE",
   },
   {
@@ -810,9 +810,7 @@ export default function LabelPrinting() {
 
   const fieldMeta = [
     { key: "name", label: "Medication Name" },
-    { key: "expiry", label: "Expiry Date" },
     { key: "code", label: "NUPCO Code" },
-    { key: "status", label: "Status (Expired / Near Expiry)" },
     { key: "action", label: "Action / Instruction" },
     { key: "message", label: "Custom Message" },
     { key: "qr", label: "QR Code (scan for details)" },
@@ -2048,7 +2046,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
 
 // Small corner badge for Sound Alike / Look Alike — matches the Inventory
 // badge exactly: sharp corners, real icon (not emoji), not a pill.
-function CategoryBadge({ category, label, fontSize = 10 }) {
+function CategoryBadge({ category, label, fontSize = 13 }) {
   // Colours/shape come from CATEGORY_STYLE — the exact same object used for
   // the medicine-list badges below — so this corner badge always looks
   // identical to "the badge in the table", per the approved reference.
@@ -2056,7 +2054,7 @@ function CategoryBadge({ category, label, fontSize = 10 }) {
   return (
     <Box sx={{
       bgcolor: style.bg, color: style.text, fontWeight: 700, fontSize: `${fontSize}px`,
-      borderRadius: "2px", px: 1, py: 0.35, display: "inline-flex", alignItems: "center", gap: 0.4,
+      borderRadius: "2px", px: 1.2, py: 0.45, display: "inline-flex", alignItems: "center", gap: 0.4,
       whiteSpace: "nowrap",
       WebkitPrintColorAdjust: "exact", printColorAdjust: "exact",
     }}>
@@ -2345,7 +2343,7 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         px: 2, py: 1.2, gap: 0.5,
         // Extra top padding when badges are present, so a row of corner
         // badges never overlaps the medicine name text underneath them.
-        pt: categoryChips && categoryChips.length > 0 ? 2.2 : 1.2,
+        pt: categoryChips && categoryChips.length > 0 ? 2.6 : 1.2,
         overflow: "hidden",
         position: "relative",
         fontFamily: "Georgia, 'Times New Roman', Times, serif",
@@ -2451,7 +2449,13 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
         </Box>
       )}
       {fields.code && labelText.code && (
-        <Box sx={{ fontSize: `${appearance.fontSize - 4}px`, fontFamily: "monospace", color: "#6b7280" }}>
+        <Box sx={{
+          position: "absolute",
+          left: "50%", bottom: "4%",
+          transform: "translateX(-50%)",
+          fontSize: `${appearance.fontSize - 4}px`, fontFamily: "monospace", color: "#6b7280",
+          whiteSpace: "nowrap",
+        }}>
           {labelText.code}
         </Box>
       )}
