@@ -240,7 +240,7 @@ const TEMPLATES = [
     bg: "#FDF6EC", text: "#B3261E", accent: "#ED6C02",
     title: "NEAR EXPIRY",
     dims: { width: 90, height: 58 },
-    fields: { name: true, expiry: false, code: false, status: false, action: true, message: false, qr: false, barcode: false, logo: false },
+    fields: { name: true, expiry: true, code: false, status: true, action: true, message: false, qr: false, barcode: false, logo: false },
     action: "USE FIRST",
   },
   {
@@ -250,7 +250,7 @@ const TEMPLATES = [
     bg: "#FDECEA", text: "#7A0C0C", accent: "#D32F2F",
     title: "EXPIRED",
     dims: { width: 90, height: 58 },
-    fields: { name: true, expiry: false, code: false, status: false, action: true, message: false, qr: false, barcode: false, logo: false },
+    fields: { name: true, expiry: true, code: false, status: true, action: true, message: false, qr: false, barcode: false, logo: false },
     action: "DO NOT USE",
   },
   {
@@ -405,6 +405,10 @@ export default function LabelPrinting() {
   const [appearance, setAppearance] = useState({
     bg: TEMPLATES[0].bg, text: TEMPLATES[0].text, accent: TEMPLATES[0].accent,
     fontSize: 16, bold: true, align: "center",
+    // لون نص مجموعة "الستيت/تاريخ الانتهاء/كود نيبكو" وحدها — منفصل عن accent
+    // العام، لأن accent كان أحيانًا يضيع/ما يوضح فوق خلفيات ملوّنة (بنفس لون
+    // القالب أو قريب منه)
+    infoColor: "#374151",
   });
 
   const [orientation, setOrientation] = useState("horizontal");
@@ -445,6 +449,14 @@ export default function LabelPrinting() {
   // نسبة تكبير/تصغير خط اسم الدواء بس (100% = الحجم الافتراضي) — مستقلة عن
   // appearance.fontSize العام، بنفس فكرة logoSize
   const [nameSize, setNameSize] = useState(130);
+  // "Status / Expiry Date / NUPCO Code" رجعناهم كخانات تُفعّل من المستخدم،
+  // بس هالمرة الثلاثة مجمّعين ببلوك واحد حر الحركة (بنفس فكرة الاسم/اللوقو)
+  // بدل ما يكون كل واحد عنصر منفصل بالتخطيط العادي — كذا يتحركون ويتكبرون
+  // مع بعض من غير ما يتصادموا مع اسم الدواء اللي له موضعه المستقل هو كمان.
+  // الموضع الافتراضي أعلى شوي ولليسار شوي عن الحافة السفلية (كانت قبل
+  // ثابتة تمامًا بالنص تحت, واليوزر طلبت ترفع فوق وليسار شوي)
+  const [infoPos, setInfoPos] = useState({ x: 42, y: 87 });
+  const [infoSize, setInfoSize] = useState(100);
   // Live preview values the on-screen card follows WHILE dragging a slider —
   // the committed logoPos/qrPos (which re-renders the whole editor) only
   // updates once, on release.
@@ -455,6 +467,8 @@ export default function LabelPrinting() {
   const [liveMessagePos, setLiveMessagePos] = useState(messagePos);
   const [liveNamePos, setLiveNamePos] = useState(namePos);
   const [liveNameSize, setLiveNameSize] = useState(nameSize);
+  const [liveInfoPos, setLiveInfoPos] = useState(infoPos);
+  const [liveInfoSize, setLiveInfoSize] = useState(infoSize);
   useEffect(() => setLiveLogoPos(logoPos), [logoPos]);
   useEffect(() => setLiveLogoSize(logoSize), [logoSize]);
   useEffect(() => setLiveQrPos(qrPos), [qrPos]);
@@ -462,6 +476,8 @@ export default function LabelPrinting() {
   useEffect(() => setLiveMessagePos(messagePos), [messagePos]);
   useEffect(() => setLiveNamePos(namePos), [namePos]);
   useEffect(() => setLiveNameSize(nameSize), [nameSize]);
+  useEffect(() => setLiveInfoPos(infoPos), [infoPos]);
+  useEffect(() => setLiveInfoSize(infoSize), [infoSize]);
   const [categoryChips, setCategoryChips] = useState([]);
   const [showCategoryBadge, setShowCategoryBadge] = useState(true);
   // Tracks a manually-picked category (for medicines not tagged in the
@@ -784,7 +800,7 @@ export default function LabelPrinting() {
   }
 
   useEffect(() => {
-    if (!fields.logo && !fields.qr && !fields.barcode && !fields.name && activeTab === "branding") setActiveTab("content");
+    if (!fields.logo && !fields.qr && !fields.barcode && !fields.name && !fields.status && !fields.expiry && !fields.code && activeTab === "branding") setActiveTab("content");
   }, [fields.logo, activeTab]);
 
   useEffect(() => {
@@ -810,7 +826,9 @@ export default function LabelPrinting() {
 
   const fieldMeta = [
     { key: "name", label: "Medication Name" },
+    { key: "expiry", label: "Expiry Date" },
     { key: "code", label: "NUPCO Code" },
+    { key: "status", label: "Status (Expired / Near Expiry)" },
     { key: "action", label: "Action / Instruction" },
     { key: "message", label: "Custom Message" },
     { key: "qr", label: "QR Code (scan for details)" },
@@ -900,7 +918,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                 sx={{ borderBottom: "1px solid #e5e7eb", mb: 2, minHeight: 40, "& .MuiTabs-flexContainer": { flexWrap: "wrap" } }}
               >
                 <Tab value="content" label="Content" sx={{ textTransform: "none", minHeight: 40, fontWeight: 700 }} />
-                {(fields.logo || fields.qr || fields.barcode || fields.name) && (
+                {(fields.logo || fields.qr || fields.barcode || fields.name || fields.status || fields.expiry || fields.code) && (
                   <Tab value="branding" label="✎ Position" sx={{
                     textTransform: "none", minHeight: 40, fontWeight: 700,
                     color: activeTab === "branding" ? "#fff" : "#1D4ED8",
@@ -1116,6 +1134,28 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                   </Box>
                 )}
 
+                {activeTab === "branding" && (fields.status || fields.expiry || fields.code) && (
+                  <Box sx={{ bgcolor: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 2, p: 2, mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Status / Expiry / NUPCO code</Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 1 }}>
+                      Status, Expiry Date and NUPCO Code are grouped together and move as one block — drag them and resize them together, independently from the medicine name.
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — horizontal</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={infoPos.x}
+                      onLiveChange={(v) => setLiveInfoPos({ ...infoPos, x: v })} onCommit={(v) => setInfoPos({ ...infoPos, x: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Position — vertical</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={infoPos.y}
+                      onLiveChange={(v) => setLiveInfoPos({ ...infoPos, y: v })} onCommit={(v) => setInfoPos({ ...infoPos, y: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
+                    <DebouncedSlider size="small" min={50} max={200} value={infoSize}
+                      onLiveChange={(v) => setLiveInfoSize(v)} onCommit={(v) => setInfoSize(v)} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Text color</Typography>
+                    <Box sx={{ mt: 0.5 }}>
+                      <ColorField label="" value={appearance.infoColor || "#374151"} onChange={(v) => setAppearance({ ...appearance, infoColor: v })} />
+                    </Box>
+                  </Box>
+                )}
+
                 {activeTab === "branding" && fields.message && (
                   <Box sx={{ bgcolor: "#FEF9C3", border: "1px solid #FDE68A", borderRadius: 2, p: 2 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Custom message</Typography>
@@ -1193,7 +1233,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} nameSize={liveNameSize} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
+                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} nameSize={liveNameSize} infoPos={liveInfoPos} infoSize={liveInfoSize} categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
@@ -1704,6 +1744,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         messagePos={messagePos} setMessagePos={setMessagePos}
         namePos={namePos} setNamePos={setNamePos}
         nameSize={nameSize} setNameSize={setNameSize}
+        infoPos={infoPos} setInfoPos={setInfoPos}
+        infoSize={infoSize} setInfoSize={setInfoSize}
       />
 
       {/* ---------- Arrange on A4 dialog ---------- */}
@@ -1729,6 +1771,8 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         messagePos={messagePos}
         namePos={namePos}
         nameSize={nameSize}
+        infoPos={infoPos}
+        infoSize={infoSize}
         categoryChips={categoryChips}
         qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""}
       />
@@ -1739,12 +1783,12 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
           ? (printSubsetIds ? batch.filter((it) => printSubsetIds.includes(it.id)) : batch).map((item) => (
               <RotatableLabel key={item.id} rotated={item.rotated} template={template} labelText={item.labelText} fields={item.fields} appearance={item.appearance}
                 dims={item.dims} orientation={item.orientation} printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg}
-                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize} categoryChips={item.categoryChips}
+                qrUrl={batchUnifyQr ? batchUnifiedQrUrl : item.qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize} infoPos={infoPos} infoSize={infoSize} categoryChips={item.categoryChips}
                 qrMessageId={batchUnifyQr ? "" : item.qrMessageId} />
             ))
           : Array.from({ length: copies }).map((_, i) => (
               <RotatableLabel key={i} rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
-                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize}
+                printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize} infoPos={infoPos} infoSize={infoSize}
                 categoryChips={categoryChips} qrMessageId={qrMessageHtml.trim() ? qrMessageId : ""} />
             ))}
       </Box>
@@ -1770,7 +1814,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
   );
 }
 
-function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, setLogoPos, setLogoSize, setLogoBg, qrSize, qrPos, setQrSize, setQrPos, messagePos, setMessagePos, namePos, setNamePos, nameSize, setNameSize }) {
+function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, onConfirmPrint, batchUnifyQr, setBatchUnifyQr, batchUnifiedQrUrl, setBatchUnifiedQrUrl, logoDataUrl, logoPos, logoSize, logoBg, setLogoPos, setLogoSize, setLogoBg, qrSize, qrPos, setQrSize, setQrPos, messagePos, setMessagePos, namePos, setNamePos, nameSize, setNameSize, infoPos, setInfoPos, infoSize, setInfoSize }) {
   const [index, setIndex] = useState(0);
   const [visited, setVisited] = useState(() => new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -1785,6 +1829,8 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   const [liveMessagePos, setLiveMessagePos] = useState(messagePos);
   const [liveNamePos, setLiveNamePos] = useState(namePos);
   const [liveNameSize, setLiveNameSize] = useState(nameSize);
+  const [liveInfoPos, setLiveInfoPos] = useState(infoPos);
+  const [liveInfoSize, setLiveInfoSize] = useState(infoSize);
   useEffect(() => setLiveLogoPos(logoPos), [logoPos]);
   useEffect(() => setLiveLogoSize(logoSize), [logoSize]);
   useEffect(() => setLiveQrPos(qrPos), [qrPos]);
@@ -1792,6 +1838,8 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
   useEffect(() => setLiveMessagePos(messagePos), [messagePos]);
   useEffect(() => setLiveNamePos(namePos), [namePos]);
   useEffect(() => setLiveNameSize(nameSize), [nameSize]);
+  useEffect(() => setLiveInfoPos(infoPos), [infoPos]);
+  useEffect(() => setLiveInfoSize(infoSize), [infoSize]);
   // Once the person turns QR on for one card, keep it on as they move
   // forward through the rest — each card still gets its own blank link.
   const [qrStickyOn, setQrStickyOn] = useState(false);
@@ -1881,7 +1929,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                         labelText={current.labelText} fields={current.fields} appearance={current.appearance}
                         dims={current.dims} orientation={current.orientation}
                         logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg}
-                        qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} nameSize={liveNameSize}
+                        qrUrl={batchUnifyQr ? batchUnifiedQrUrl : current.qrUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} nameSize={liveNameSize} infoPos={liveInfoPos} infoSize={liveInfoSize}
                         categoryChips={current.categoryChips} qrMessageId={batchUnifyQr ? "" : current.qrMessageId} />
                     </ScaledPreview>
                     <Typography sx={{ fontWeight: 700, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{current.previewName}</Typography>
@@ -1942,7 +1990,7 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
             {/* Same logo/QR position & size controls as the main editor's
                 Position tab — available here too, applies to every label. */}
             <Button size="small" onClick={() => setShowPosition((s) => !s)} sx={{ textTransform: "none", mb: showPosition ? 1 : 0 }}>
-              {showPosition ? "Hide" : "✎ Adjust name / logo / QR position & size"}
+              {showPosition ? "Hide" : "✎ Adjust name / status·expiry·code / logo / QR position & size"}
             </Button>
             {showPosition && (
               <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
@@ -1958,6 +2006,20 @@ function ReviewPrintDialog({ open, onClose, batch, setBatch, removeFromBatch, on
                     <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
                     <DebouncedSlider size="small" min={50} max={200} value={nameSize}
                       onLiveChange={(v) => setLiveNameSize(v)} onCommit={(v) => setNameSize(v)} />
+                  </Box>
+                )}
+                {current && (current.fields.status || current.fields.expiry || current.fields.code) && (
+                  <Box sx={{ bgcolor: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 2, p: 1.5, flex: 1, minWidth: 180 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>Status / Expiry / Code</Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Horizontal</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={infoPos.x}
+                      onLiveChange={(v) => setLiveInfoPos({ ...infoPos, x: v })} onCommit={(v) => setInfoPos({ ...infoPos, x: v })} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Vertical</Typography>
+                    <DebouncedSlider size="small" min={0} max={100} value={infoPos.y}
+                      onLiveChange={(v) => setLiveInfoPos({ ...infoPos, y: v })} onCommit={(v) => setInfoPos({ ...infoPos, y: v })} sx={{ mb: 1 }} />
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>Size</Typography>
+                    <DebouncedSlider size="small" min={50} max={200} value={infoSize}
+                      onLiveChange={(v) => setLiveInfoSize(v)} onCommit={(v) => setInfoSize(v)} />
                   </Box>
                 )}
                 {logoDataUrl && (
@@ -2136,7 +2198,7 @@ function ScaledPreview({ dims, orientation, maxBox = 320, children }) {
   );
 }
 
-function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, nameSize, categoryChips, qrMessageId }) {
+function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, arrangement, template, labelText, fields, appearance, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, nameSize, infoPos, infoSize, categoryChips, qrMessageId }) {
   const initW = orientation === "horizontal" ? dims.width : dims.height;
   const initH = orientation === "horizontal" ? dims.height : dims.width;
 
@@ -2252,7 +2314,7 @@ function ArrangeDialog({ open, onClose, onConfirm, dims, orientation, rotated, a
           >
             <Box sx={{ width: box.w * PXPERMM, height: box.h * PXPERMM, pointerEvents: "none", transform: `scale(${scale})`, transformOrigin: "top left" }}>
               <RotatableLabel rotated={box.rotated} template={template} labelText={labelText} fields={fields} appearance={appearance}
-                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize} categoryChips={categoryChips} qrMessageId={qrMessageId} />
+                dims={{ width: box.w, height: box.h }} orientation="horizontal" logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize} infoPos={infoPos} infoSize={infoSize} categoryChips={categoryChips} qrMessageId={qrMessageId} />
             </Box>
             <Box
               onMouseDown={startResize}
@@ -2311,7 +2373,7 @@ function RotatableLabel({ rotated, dims, orientation, ...rest }) {
   );
 }
 
-function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, nameSize, categoryChips, qrMessageId }) {
+function LabelCard({ template, labelText, fields, appearance, dims, orientation, printMode, logoDataUrl, logoPos, logoSize, logoBg, qrUrl, qrSize, qrPos, messagePos, namePos, nameSize, infoPos, infoSize, categoryChips, qrMessageId }) {
   const Icon = template.icon;
   const width = orientation === "horizontal" ? dims.width : dims.height;
   const height = orientation === "horizontal" ? dims.height : dims.width;
@@ -2428,35 +2490,43 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           ))}
         </Box>
       )}
-      {!showNamePlaceholder && fields.status && labelText.status && (
-        <Box sx={{ color: appearance.accent, fontWeight: 700, fontSize: `${appearance.fontSize}px` }}>
-          {labelText.status.toUpperCase()}
+      {(fields.status || fields.expiry || fields.code) && !showNamePlaceholder && (
+        // مجموعة "الستيت + تاريخ الانتهاء + كود نيبكو" — كتلة واحدة حرة
+        // الحركة (بنفس فكرة الاسم/اللوقو)، تتحرك وتتكبر مع بعض ولها لون
+        // نص خاص بها (appearance.infoColor) عشان توضح فوق أي خلفية ملوّنة
+        <Box sx={{
+          position: "absolute",
+          left: `${infoPos?.x ?? 42}%`, top: `${infoPos?.y ?? 87}%`,
+          transform: "translate(-50%, -50%)",
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 0.4,
+          fontSize: `${appearance.fontSize * ((infoSize ?? 100) / 100)}px`,
+          color: appearance.infoColor || "#374151",
+        }}>
+          {fields.status && labelText.status && (
+            <Box sx={{ fontWeight: 700, fontSize: "1em" }}>
+              {labelText.status.toUpperCase()}
+            </Box>
+          )}
+          {fields.expiry && (
+            <Box sx={{
+              display: "flex", alignItems: "center", gap: 0.5,
+              border: `1px solid ${(appearance.infoColor || "#374151")}55`, borderRadius: "4px", px: 1, py: 0.3,
+              fontSize: "0.9em", whiteSpace: "nowrap",
+            }}>
+              <CalendarMonthIcon sx={{ fontSize: "1em", color: "inherit" }} />
+              EXP: {labelText.expiry || "____/____/______"}
+            </Box>
+          )}
+          {fields.code && labelText.code && (
+            <Box sx={{ fontSize: "0.7em", fontFamily: "monospace", whiteSpace: "nowrap" }}>
+              {labelText.code}
+            </Box>
+          )}
         </Box>
       )}
       {fields.description && template.description && (
         <Box sx={{ fontSize: `${appearance.fontSize - 2}px`, opacity: 0.85, maxWidth: "90%" }}>
           {template.description}
-        </Box>
-      )}
-      {fields.expiry && (
-        <Box sx={{
-          display: "flex", alignItems: "center", gap: 0.5, mt: 0.3,
-          border: `1px solid ${appearance.accent}55`, borderRadius: "4px", px: 1, py: 0.3,
-          fontSize: `${appearance.fontSize - 1}px`,
-        }}>
-          <CalendarMonthIcon sx={{ fontSize: `${appearance.fontSize}px`, color: appearance.accent }} />
-          EXP: {labelText.expiry || "____/____/______"}
-        </Box>
-      )}
-      {fields.code && labelText.code && (
-        <Box sx={{
-          position: "absolute",
-          left: "50%", bottom: "4%",
-          transform: "translateX(-50%)",
-          fontSize: `${appearance.fontSize - 4}px`, fontFamily: "monospace", color: "#6b7280",
-          whiteSpace: "nowrap",
-        }}>
-          {labelText.code}
         </Box>
       )}
       {fields.barcode && (labelText.code || labelText.name) && (
