@@ -24,6 +24,7 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
+import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
 import { useNavigate } from "react-router-dom";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
@@ -552,8 +553,8 @@ function MawsoolOrders() {
                 <TableRow
                   key={med.id}
                   sx={{
-                    bgcolor: med.isExternal ? "#fffbeb" : "inherit",
-                    "&:hover": { bgcolor: med.isExternal ? "#fef3c7" : "#f8fafc" }
+                    bgcolor: med.isExternal ? "#fffbeb" : (med.mawsoolSource === "liveScan" ? "#EFF6FF" : "inherit"),
+                    "&:hover": { bgcolor: med.isExternal ? "#fef3c7" : (med.mawsoolSource === "liveScan" ? "#DBEAFE" : "#f8fafc") }
                   }}
                 >
                   <TableCell>
@@ -575,6 +576,16 @@ function MawsoolOrders() {
                             label="New"
                             size="small"
                             sx={{ bgcolor: "#fef3c7", color: "#92400e", fontWeight: 600, height: 20, fontSize: "0.7rem" }}
+                          />
+                        </Tooltip>
+                      )}
+                      {med.mawsoolSource === "liveScan" && (
+                        <Tooltip title="Added from the barcode/QR scan screen, not from the Inventory checkbox">
+                          <Chip
+                            icon={<QrCodeScannerIcon sx={{ fontSize: 14, color: "#1D4ED8 !important" }} />}
+                            label="Added via Scan"
+                            size="small"
+                            sx={{ bgcolor: "#DBEAFE", color: "#1D4ED8", fontWeight: 600, height: 20, fontSize: "0.7rem" }}
                           />
                         </Tooltip>
                       )}
