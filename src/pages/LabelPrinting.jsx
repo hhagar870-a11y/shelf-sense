@@ -522,13 +522,29 @@ export default function LabelPrinting() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [batch, setBatch] = useState([]);
   const [qrMessageHtml, setQrMessageHtml] = useState("");
+  // روابط إضافية يرفقها الصيدلي مع رسالة QR (زي رابط بروتوكول العلاج،
+  // ورقة تعليمات الجرعة...) — تتخزن بنفس مستند qrMessages تحت نفس المعرف،
+  // وتظهر بصفحة QRLanding تحت صندوق الرسالة مباشرة
+  const [qrLinks, setQrLinks] = useState([]);
+  const [newLinkLabel, setNewLinkLabel] = useState("");
+  const [newLinkUrl, setNewLinkUrl] = useState("");
   // معرّف الرسالة صار مربوط بهوية الدواء نفسه (Firestore id) بدل رقم عشوائي
   // ثابت طول الجلسة — قبل كذا، أي دواءين تحررينهم بنفس الجلسة كانوا
   // يتشاركون نفس صندوق الرسالة، فرسالة دواء تظهر فوق دواء ثاني بالخطأ
   const blankSessionId = useRef(`blank_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  // نفضّل الربط بكود نيبكو نفسه (مب بمعرّف Firestore الداخلي) لما يكون
+  // الدواء عنده كود حقيقي — الكود مطبوع فعليًا على العبوة وثابت دائمًا،
+  // بعكس معرّف Firestore اللي يتغيّر كل مرة الدواء ينحذف وينضاف من جديد
+  // (زي بعد استيراد إكسل جديد). بهالطريقة رسالة الـQR وروابطها تفضل
+  // شغالة ومربوطة بنفس الدواء حتى لو انحذف ورجع أكثر من مرة، طالما نفس
+  // الكود. الأدوية اللي ما عندها كود أصلاً ترجع للسلوك القديم (معرّف
+  // Firestore) لأنه ما فيه بديل ثابت غيره
+  const hasRealCode = selectedMed?.code && selectedMed.code !== "No Code Available";
   const qrMessageId = useMemo(
-    () => (selectedMed?.id ? `msg_${selectedMed.id}` : `msg_${blankSessionId.current}`),
-    [selectedMed?.id]
+    () => (hasRealCode
+      ? `msg_code_${String(selectedMed.code).replace(/\//g, "_")}`
+      : selectedMed?.id ? `msg_${selectedMed.id}` : `msg_${blankSessionId.current}`),
+    [selectedMed?.id, selectedMed?.code, hasRealCode]
   );
   const [qrMessageSaved, setQrMessageSaved] = useState(false);
   // The contentEditable box used to call setQrMessageHtml on every single
@@ -549,13 +565,45 @@ export default function LabelPrinting() {
     if (htmlOverride !== undefined) setQrMessageHtml(htmlOverride);
     if (!html.trim()) return;
     try {
-      await setDoc(doc(db, "qrMessages", qrMessageId), { html, updatedAt: Date.now() });
+      // merge:true عشان حفظ نص الرسالة ما يمسح الروابط اللي محفوظة بنفس
+      // المستند (والعكس صحيح بـ saveQrLinks تحت)
+      await setDoc(doc(db, "qrMessages", qrMessageId), { html, updatedAt: Date.now() }, { merge: true });
       setQrMessageSaved(true);
     } catch (err) {
       console.error("Failed to save QR message:", err);
       setSettingsSaveError(true);
     }
   }
+
+  async function saveQrLinks(nextLinks) {
+    try {
+      await setDoc(doc(db, "qrMessages", qrMessageId), { links: nextLinks, updatedAt: Date.now() }, { merge: true });
+    } catch (err) {
+      console.error("Failed to save QR links:", err);
+      setSettingsSaveError(true);
+    }
+  }
+
+  function addQrLink() {
+    const url = newLinkUrl.trim();
+    if (!url) return;
+    const label = newLinkLabel.trim() || url;
+    const next = [...qrLinks, { label, url }];
+    setQrLinks(next);
+    setNewLinkLabel("");
+    setNewLinkUrl("");
+    saveQrLinks(next);
+  }
+
+  function removeQrLink(index) {
+    const next = qrLinks.filter((_, i) => i !== index);
+    setQrLinks(next);
+    saveQrLinks(next);
+  }
+
+  // كل ما تغيّر الدواء المحرَّر، الروابط المحلية ترجع فاضية (بنفس منطق
+  // صندوق الرسالة اللي يعتمد على remount عبر key={selectedMed?.id})
+  useEffect(() => { setQrLinks([]); setNewLinkLabel(""); setNewLinkUrl(""); }, [selectedMed?.id]);
 
   useEffect(() => {
     async function fetchMedicines() {
@@ -1065,6 +1113,29 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
                               }}
                             />
                             {qrMessageSaved && <Typography variant="caption" sx={{ color: "#2E7D32" }}>Saved ✓</Typography>}
+
+                            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mt: 2, mb: 0.5 }}>
+                              Attached links (optional — shown below the message when scanned)
+                            </Typography>
+                            {qrLinks.map((link, i) => (
+                              <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                                <Box sx={{ flex: 1, fontSize: 13, p: 1, border: "1px solid #e5e7eb", borderRadius: 1, bgcolor: "#F8FAFC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  <strong>{link.label}</strong> — {link.url}
+                                </Box>
+                                <IconButton size="small" onClick={() => removeQrLink(i)}>
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            ))}
+                            <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
+                              <TextField size="small" placeholder="Label (e.g. Dosage sheet)" value={newLinkLabel}
+                                onChange={(e) => setNewLinkLabel(e.target.value)} sx={{ flex: 1 }} />
+                              <TextField size="small" placeholder="https://..." value={newLinkUrl}
+                                onChange={(e) => setNewLinkUrl(e.target.value)} sx={{ flex: 1.4 }} />
+                              <Button size="small" variant="outlined" onClick={addQrLink} sx={{ textTransform: "none", whiteSpace: "nowrap" }}>
+                                + Add
+                              </Button>
+                            </Box>
                           </Box>
                         )}
                       </>
