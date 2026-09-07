@@ -802,7 +802,7 @@ export default function LabelPrinting() {
       // Captured at add-time so each queued label keeps its OWN QR link —
       // it doesn't silently pick up whatever link is in the editor later.
       qrUrl: qrCustomUrl,
-      qrMessageId: (qrMessageHtml.trim() || qrLinks.length > 0) ? qrMessageId : "",
+      qrMessageId: qrMessageId,
       previewName: labelText.name || template.title,
     }]);
     // Copies only applies to the single-label fallback print — once
@@ -1303,7 +1303,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <IconButton onClick={() => goTemplate(-1)}><ChevronLeftIcon /></IconButton>
                 <ScaledPreview maxBox={340} dims={dims} orientation={orientation}>
-                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} nameSize={liveNameSize} infoPos={liveInfoPos} infoSize={liveInfoSize} categoryChips={categoryChips} qrMessageId={(qrMessageHtml.trim() || qrLinks.length > 0) ? qrMessageId : ""} />
+                  <RotatableLabel rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation} logoDataUrl={logoDataUrl} logoPos={liveLogoPos} logoSize={liveLogoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={liveQrSize} qrPos={liveQrPos} messagePos={liveMessagePos} namePos={liveNamePos} nameSize={liveNameSize} infoPos={liveInfoPos} infoSize={liveInfoSize} categoryChips={categoryChips} qrMessageId={qrMessageId} />
                 </ScaledPreview>
                 <IconButton onClick={() => goTemplate(1)}><ChevronRightIcon /></IconButton>
               </Box>
@@ -1844,7 +1844,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
         infoPos={infoPos}
         infoSize={infoSize}
         categoryChips={categoryChips}
-        qrMessageId={(qrMessageHtml.trim() || qrLinks.length > 0) ? qrMessageId : ""}
+        qrMessageId={qrMessageId}
       />
 
       {/* ---------- Hidden A4 print sheet (visible only when printing) ---------- */}
@@ -1859,7 +1859,7 @@ sx={{ width: { xs: "100%", md: "85%" }, height: "auto", mx: "auto", borderRadius
           : Array.from({ length: copies }).map((_, i) => (
               <RotatableLabel key={i} rotated={rotated} template={template} labelText={labelText} fields={fields} appearance={appearance} dims={dims} orientation={orientation}
                 printMode logoDataUrl={logoDataUrl} logoPos={logoPos} logoSize={logoSize} logoBg={logoBg} qrUrl={qrCustomUrl} qrSize={qrSize} qrPos={qrPos} messagePos={messagePos} namePos={namePos} nameSize={nameSize} infoPos={infoPos} infoSize={infoSize}
-                categoryChips={categoryChips} qrMessageId={(qrMessageHtml.trim() || qrLinks.length > 0) ? qrMessageId : ""} />
+                categoryChips={categoryChips} qrMessageId={qrMessageId} />
             ))}
       </Box>
 
@@ -2505,9 +2505,13 @@ function LabelCard({ template, labelText, fields, appearance, dims, orientation,
           left: `${(qrPos?.x ?? 20)}%`, top: `${(qrPos?.y ?? 87)}%`,
           transform: "translate(-50%, -50%)",
           bgcolor: "#fff", p: "3px", borderRadius: "3px", lineHeight: 0,
-          // Faded until real content is attached (a link or a message), so
-          // it visually reads as a placeholder rather than a finished QR
-          opacity: (qrUrl?.trim() || qrMessageId) ? 1 : 0.32,
+          // Faded until the QR would actually encode something useful (a
+          // custom link, or a real product code/name) — otherwise it visually
+          // reads as a placeholder rather than a finished QR. qrMessageId is
+          // now always set (so the code keeps working if a message/links get
+          // added later, without reprinting), so it's no longer a reliable
+          // "has real content" signal on its own.
+          opacity: (qrUrl?.trim() || labelText.code || labelText.name) ? 1 : 0.32,
         }}>
           <MemoQRCode
             value={qrUrl?.trim()
