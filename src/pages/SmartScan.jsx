@@ -14,8 +14,8 @@ import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
 import LinkIcon from "@mui/icons-material/Link";
 
-import Delete from "@mui/icons-material/Delete";
-import Chat from "@mui/icons-material/Chat";
+import DeleteOutlineIcon from "@mui/icons-material/Delete";
+import ChatBubbleOutlineIcon from "@mui/icons-material/Chat";
 
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
