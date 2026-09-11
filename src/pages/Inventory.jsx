@@ -1038,12 +1038,14 @@ const handleLabelSave = () => {
     return;
   }
   const secondExpiryDates = secondMedicine.expiryDates.map((d) => parseFlexibleDate(d));
+  const firstId = crypto.randomUUID();
+  const secondId = crypto.randomUUID();
 
   const updatedMedicines = [
     ...medicines,
     {
       ...newMedicine,
-      id: crypto.randomUUID(),
+      id: firstId,
       isSection: false,
       expiry: newMedicine.expiryDates[0] || "",
       expiryDates: newMedicine.expiryDates.filter((d) => d),
@@ -1058,7 +1060,7 @@ const handleLabelSave = () => {
       code: newMedicine.code,
       quantity: secondMedicine.quantity,
       reorderLevel: secondMedicine.reorderLevel || "20",
-      id: crypto.randomUUID(),
+      id: secondId,
       isSection: false,
       expiry: secondExpiryDates[0] || "",
       expiryDates: secondExpiryDates.filter((d) => d),
@@ -1072,6 +1074,33 @@ const handleLabelSave = () => {
   setMedicines(updatedMedicines);
   setIsDualCodeEntry(false);
   setSecondMedicine(emptySecondMedicine());
+
+  // نفس إصلاح الفرع التاني — أول كمية لكل صنف من الصنفين المشتركين
+  // بنفس الكود تتسجل بالهيستوري بدل ما تختفي
+  const dualBatchLog = [];
+  if (newMedicine.quantity) {
+    dualBatchLog.push({
+      medicineId: firstId,
+      medicineName: newMedicine.name,
+      code: newMedicine.code || "",
+      quantity: newMedicine.quantity,
+      expiryDates: newMedicine.expiryDates.filter((d) => d),
+      importedAt: new Date().toISOString(),
+    });
+  }
+  if (secondMedicine.quantity) {
+    dualBatchLog.push({
+      medicineId: secondId,
+      medicineName: secondMedicine.name,
+      code: newMedicine.code || "",
+      quantity: secondMedicine.quantity,
+      expiryDates: secondExpiryDates.filter((d) => d),
+      importedAt: new Date().toISOString(),
+    });
+  }
+  persistMedicineBatches(dualBatchLog).catch((err) =>
+    console.error("Failed to save shipment/batch history:", err)
+  );
 } else {
   // التحقق من تكرار الدواء: بالكود لو متوفر عند الاثنين، أو بالاسم لو الاثنين بدون كود
   const inputCode = String(newMedicine.code || "").trim();
@@ -1109,11 +1138,12 @@ const handleLabelSave = () => {
     setOpen(false);
     setDuplicateModalOpen(true);
   } else {
+    const newId = crypto.randomUUID();
     const updatedMedicines = [
       ...medicines,
       {
         ...newMedicine,
-        id: crypto.randomUUID(),
+        id: newId,
         isSection: false,
         expiry: newMedicine.expiryDates[0] || "",
         expiryDates: newMedicine.expiryDates.filter((d) => d),
@@ -1125,6 +1155,25 @@ const handleLabelSave = () => {
       },
     ];
     setMedicines(updatedMedicines);
+
+    // ⭐ هذا هو السبب الحقيقي وراء "أول شحنة ما تظهر بالهيستوري": هذا
+    // الفرع يشتغل لما الكود ما يتطابق مع أي دواء بالمخزون الحي — يشمل
+    // دواء جديد كليًا، وكمان دواء كان موجود بس بسلة المهملات فقط (الفحص
+    // فوق يدوّر بقائمة medicines الحية بس، ما يدوّر بالتراش)، فيتولد له id
+    // جديد تمامًا ويُعامل كدواء جديد. قبل، هذا الفرع ما كان يسجل الكمية
+    // الأولى هذي بأي هيستوري إطلاقًا — لا medicineBatches ولا غيره
+    if (newMedicine.quantity) {
+      persistMedicineBatches([
+        {
+          medicineId: newId,
+          medicineName: newMedicine.name,
+          code: newMedicine.code || "",
+          quantity: newMedicine.quantity,
+          expiryDates: newMedicine.expiryDates.filter((d) => d),
+          importedAt: new Date().toISOString(),
+        },
+      ]).catch((err) => console.error("Failed to save shipment/batch history:", err));
+    }
   }
 }
     setNewMedicine({

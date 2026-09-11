@@ -19,8 +19,9 @@ import ChatBubbleOutlineIcon from "@mui/icons-material/Chat";
 
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+import JsBarcode from "jsbarcode";
 
-import { collection, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import ScannedMedicineCard from "./ScannedMedicineCard";
 
@@ -81,6 +82,48 @@ function plainTextToHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
 }
 
+function formatHistoryDate(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+
+// باركود حقيقي (Code128) لكود الدواء يترسم بجانب صندوق التعديل — عشان
+// الصيدلي يقدر يمسحه بجواله (أو بأي قارئ باركود ثاني) بعد ما يحفظ التعديل،
+// ويتأكد إن الرسالة/الروابط اللي زادها فعلاً طلعت بصفحة نتيجة المسح، بدون
+// ما يحتاج يطبع ليبل تجريبي كل مرة يبي يتأكد من شكل النتيجة
+function MedicineBarcodePreview({ code }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !code) return;
+    try {
+      JsBarcode(canvasRef.current, String(code), {
+        format: "CODE128",
+        width: 2,
+        height: 55,
+        displayValue: true,
+        fontSize: 12,
+        margin: 6,
+      });
+    } catch (err) {
+      console.error("Failed to render barcode preview:", err);
+    }
+  }, [code]);
+
+  if (!code) {
+    return (
+      <Typography variant="caption" sx={{ color: "#9ca3af" }}>
+        This medicine has no NUPCO code, so no barcode can be generated for it.
+      </Typography>
+    );
+  }
+  return <canvas ref={canvasRef} style={{ maxWidth: "100%" }} />;
+}
+
 function EditQrContentDialog({ open, onClose, medicine, onSaved }) {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -88,10 +131,13 @@ function EditQrContentDialog({ open, onClose, medicine, onSaved }) {
   const [newLinkLabel, setNewLinkLabel] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
     if (!open || !medicine) return;
     setLoading(true);
+    setHistoryLoading(true);
     (async () => {
       try {
         const snap = await getDoc(doc(db, "qrMessages", qrIdFor(medicine)));
@@ -107,8 +153,43 @@ function EditQrContentDialog({ open, onClose, medicine, onSaved }) {
       } finally {
         setLoading(false);
       }
+
+      // نفس منطق الهيستوري اللي تعرضه ScannedMedicineCard (شحنات + تعديلات
+      // يدوية) — بس هنا داخل صندوق التعديل نفسه، مع زر حذف لكل سطر
+      try {
+        const hasRealCode = medicine.code && medicine.code !== "No Code Available";
+        const [batchesSnap, editSnap] = await Promise.all([
+          getDocs(collection(db, "medicineBatches")),
+          getDocs(collection(db, "medicineEditLog")),
+        ]);
+        const batchItems = batchesSnap.docs
+          .map((d) => ({ id: d.id, ...d.data(), kind: "batch" }))
+          .filter((b) => (hasRealCode && b.code === medicine.code) || b.medicineId === medicine.id);
+        const editItems = editSnap.docs
+          .map((d) => ({ id: d.id, ...d.data(), kind: "edit" }))
+          .filter((e) => (hasRealCode && e.code === medicine.code) || e.medicineId === medicine.id);
+        const combined = [...batchItems, ...editItems].sort(
+          (a, b) => new Date(b.importedAt || b.editedAt || 0) - new Date(a.importedAt || a.editedAt || 0)
+        );
+        setHistory(combined);
+      } catch (err) {
+        console.error("Failed to load medicine history:", err);
+      } finally {
+        setHistoryLoading(false);
+      }
     })();
   }, [open, medicine]);
+
+  async function handleDeleteHistoryEntry(entry) {
+    if (!window.confirm("Delete this history entry permanently? This cannot be undone.")) return;
+    try {
+      const col = entry.kind === "batch" ? "medicineBatches" : "medicineEditLog";
+      await deleteDoc(doc(db, col, entry.id));
+      setHistory((prev) => prev.filter((h) => h.id !== entry.id));
+    } catch (err) {
+      console.error("Failed to delete history entry:", err);
+    }
+  }
 
   function addLink() {
     const url = newLinkUrl.trim();
@@ -139,8 +220,13 @@ function EditQrContentDialog({ open, onClose, medicine, onSaved }) {
     }
   }
 
+  const hasRealCode = medicine?.code && medicine.code !== "No Code Available";
+  const previewHref = medicine
+    ? `/scan-result?code=${encodeURIComponent(hasRealCode ? medicine.code : "")}&msg=${encodeURIComponent(qrIdFor(medicine))}`
+    : "#";
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle sx={{ fontWeight: 700 }}>
         {medicine?.name}
         <Typography variant="caption" sx={{ display: "block", color: "#6b7280", fontWeight: 400, mt: 0.25 }}>
@@ -148,45 +234,96 @@ function EditQrContentDialog({ open, onClose, medicine, onSaved }) {
         </Typography>
       </DialogTitle>
       <DialogContent dividers>
-        {loading ? (
-          <Typography variant="body2" sx={{ color: "#9ca3af" }}>Loading…</Typography>
-        ) : (
-          <>
-            <Typography variant="caption" sx={{ color: "#6b7280", fontWeight: 700, display: "block", mb: 0.75 }}>
-              Message (shown when this medicine's label is scanned)
-            </Typography>
-            <TextField
-              fullWidth multiline minRows={3} maxRows={6}
-              placeholder="e.g. Store below 25°C. Check with pharmacist before dispensing to pediatric patients."
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              sx={{ mb: 2.5 }}
-            />
+        <Box sx={{ display: "flex", gap: 3, flexDirection: { xs: "column", md: "row" } }}>
+          <Box sx={{ flex: 1.3, minWidth: 0 }}>
+            {loading ? (
+              <Typography variant="body2" sx={{ color: "#9ca3af" }}>Loading…</Typography>
+            ) : (
+              <>
+                <Typography variant="caption" sx={{ color: "#6b7280", fontWeight: 700, display: "block", mb: 0.75 }}>
+                  Message (shown when this medicine's label is scanned)
+                </Typography>
+                <TextField
+                  fullWidth multiline minRows={3} maxRows={6}
+                  placeholder="e.g. Store below 25°C. Check with pharmacist before dispensing to pediatric patients."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  sx={{ mb: 2.5 }}
+                />
 
-            <Typography variant="caption" sx={{ color: "#6b7280", fontWeight: 700, display: "block", mb: 0.75 }}>
-              Attached links
-            </Typography>
-            {links.map((link, i) => (
-              <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                <Box sx={{ flex: 1, fontSize: 13, p: 1, border: "1px solid #e5e7eb", borderRadius: 1, bgcolor: "#F8FAFC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  <strong>{link.label}</strong> — {link.url}
+                <Typography variant="caption" sx={{ color: "#6b7280", fontWeight: 700, display: "block", mb: 0.75 }}>
+                  Attached links
+                </Typography>
+                {links.map((link, i) => (
+                  <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                    <Box sx={{ flex: 1, fontSize: 13, p: 1, border: "1px solid #e5e7eb", borderRadius: 1, bgcolor: "#F8FAFC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <strong>{link.label}</strong> — {link.url}
+                    </Box>
+                    <IconButton size="small" onClick={() => removeLink(i)}>
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+                <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
+                  <TextField size="small" placeholder="Label (e.g. Dosage sheet)" value={newLinkLabel}
+                    onChange={(e) => setNewLinkLabel(e.target.value)} sx={{ flex: 1 }} />
+                  <TextField size="small" placeholder="https://..." value={newLinkUrl}
+                    onChange={(e) => setNewLinkUrl(e.target.value)} sx={{ flex: 1.4 }} />
+                  <Button size="small" variant="outlined" onClick={addLink} sx={{ textTransform: "none", whiteSpace: "nowrap" }}>
+                    + Add
+                  </Button>
                 </Box>
-                <IconButton size="small" onClick={() => removeLink(i)}>
-                  <DeleteOutlineIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            ))}
-            <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
-              <TextField size="small" placeholder="Label (e.g. Dosage sheet)" value={newLinkLabel}
-                onChange={(e) => setNewLinkLabel(e.target.value)} sx={{ flex: 1 }} />
-              <TextField size="small" placeholder="https://..." value={newLinkUrl}
-                onChange={(e) => setNewLinkUrl(e.target.value)} sx={{ flex: 1.4 }} />
-              <Button size="small" variant="outlined" onClick={addLink} sx={{ textTransform: "none", whiteSpace: "nowrap" }}>
-                + Add
-              </Button>
+              </>
+            )}
+          </Box>
+
+          <Box sx={{
+            flex: 1, minWidth: 0,
+            borderLeft: { md: "1px solid #e5e7eb" }, pl: { md: 3 },
+            borderTop: { xs: "1px solid #e5e7eb", md: "none" }, pt: { xs: 2.5, md: 0 },
+          }}>
+            <Typography variant="caption" sx={{ color: "#6b7280", fontWeight: 700, display: "block", mb: 1 }}>
+              Scan to preview
+            </Typography>
+            <Box sx={{ display: "flex", justifyContent: "center", p: 1.5, border: "1px dashed #cbd5e1", borderRadius: 1.5, mb: 1, bgcolor: "#fff" }}>
+              <MedicineBarcodePreview code={hasRealCode ? medicine.code : ""} />
             </Box>
-          </>
-        )}
+            <Button
+              fullWidth size="small" variant="outlined"
+              component="a" href={previewHref} target="_blank" rel="noopener noreferrer"
+              sx={{ textTransform: "none", mb: 2.5 }}
+            >
+              Open live preview page
+            </Button>
+
+            <Typography variant="caption" sx={{ color: "#6b7280", fontWeight: 700, display: "block", mb: 1 }}>
+              Shipment / edit history
+            </Typography>
+            {historyLoading ? (
+              <Typography variant="body2" sx={{ color: "#9ca3af" }}>Loading…</Typography>
+            ) : history.length === 0 ? (
+              <Typography variant="body2" sx={{ color: "#9ca3af" }}>No history recorded yet.</Typography>
+            ) : (
+              <Box sx={{ maxHeight: 260, overflowY: "auto" }}>
+                {history.map((h) => (
+                  <Box key={h.id} sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, py: 1, borderBottom: "1px solid #f1f5f9" }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>
+                        {h.kind === "batch" ? `Qty: ${h.quantity}` : "Edited"}
+                      </Typography>
+                      <Typography sx={{ fontSize: 11, color: "#9ca3af" }}>
+                        {formatHistoryDate(h.importedAt || h.editedAt)}
+                      </Typography>
+                    </Box>
+                    <IconButton size="small" onClick={() => handleDeleteHistoryEntry(h)}>
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose} sx={{ textTransform: "none" }}>Cancel</Button>
@@ -429,7 +566,10 @@ function LiveScanner() {
 
       {detectedCode && (
         <Paper elevation={0} sx={{ mt: 3, p: 3, borderRadius: 3, border: "1px solid #e2e8f0", bgcolor: "#ffffff" }}>
-          <ScannedMedicineCard scannedCode={detectedCode} />
+          {/* editable=true بس هنا — هذي صفحة داخلية بالموقع (بيد المشرف)،
+              عكس QRLanding.jsx (صفحة الباركود العامة اللي تفتح لأي حد
+              يمسح ملصق الرف) اللي ما تمرر هذي الخاصية أبدًا */}
+          <ScannedMedicineCard scannedCode={detectedCode} editable />
         </Paper>
       )}
     </Box>

@@ -10,7 +10,9 @@ import EditIcon from "@mui/icons-material/Edit";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, doc, updateDoc, addDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, addDoc, setDoc } from "firebase/firestore";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
 import { db } from "../firebase";
 import { getDrugCategories } from "../data/getDrugCategories";
 
@@ -105,7 +107,12 @@ function StatRow({ icon, label, value }) {
   );
 }
 
-export default function ScannedMedicineCard({ scannedCode }) {
+// editable=false افتراضيًا عمدًا — هذا الكومبوننت يُستخدم بمكانين: صفحة
+// QRLanding.jsx العامة (يفتحها أي حد يمسح باركود الرف، بدون تسجيل دخول)،
+// وصفحة SmartScan.jsx الداخلية بالموقع (بيد المشرف/الصيدلي المسجل). ما نبي
+// أي زر تعديل يطلع لواحد فتح الباركود من على الرف، فـ QRLanding.jsx ما
+// يمرر هذي الخاصية أبدًا (تفضل false)، وSmartScan.jsx بس هي اللي تمررها true
+export default function ScannedMedicineCard({ scannedCode, editable = false }) {
   const [manualCode, setManualCode] = useState("");
   const [medicines, setMedicines] = useState([]);
   const [trashMedicines, setTrashMedicines] = useState([]);
@@ -197,6 +204,51 @@ export default function ScannedMedicineCard({ scannedCode }) {
   const [addingToMawsool, setAddingToMawsool] = useState(false);
   const [justAddedToMawsool, setJustAddedToMawsool] = useState(false);
   useEffect(() => { setJustAddedToMawsool(false); }, [codeToLookup]);
+
+  // تحرير مباشر لتاريخ الانتهاء من نفس شاشة المسح المباشر — أهم استخدام
+  // له هو الأدوية اللي انضافت عمدًا من غير تاريخ (بأمر صريح)، عشان الصيدلي
+  // ما يضل يحاس إن الفراغ "خطأ بالنظام"، ويقدر يرجع يضيف التاريخ الصح لما
+  // يوصله لاحقًا، بدل ما يروح لصفحة المخزون الكاملة لتعديل دواء واحد
+  const [editingDateIndex, setEditingDateIndex] = useState(null);
+  const [dateDraft, setDateDraft] = useState("");
+  const [savingDate, setSavingDate] = useState(false);
+  useEffect(() => { setEditingDateIndex(null); }, [codeToLookup]);
+
+  async function persistScanEdit(entry) {
+    await setDoc(doc(db, "medicineEditLog", crypto.randomUUID()), entry);
+  }
+
+  async function handleSaveExpiryDate(index) {
+    // فحص إضافي هنا برضو (مو بس إخفاء الزر) — حتى لو حد قدر يستدعي هذي
+    // الدالة بطريقة ثانية، ما ينفذ شيء إلا لو الكومبوننت فعليًا بوضع editable
+    if (!editable || !result || result.notFound || result.deleted) return;
+    const previousDates = result.dates;
+    const newDates = previousDates.map((d, i) => (i === index ? dateDraft : d));
+    setSavingDate(true);
+    try {
+      // لو الدواء عنده مصفوفة تواريخ (expiryDates)، نحدّثها كاملة. لو تاريخ
+      // واحد بس (expiry)، نحدّث الحقل المفرد بدل ما نخترع مصفوفة ما كانت
+      // موجودة أصلًا بشكل الدواء
+      const updatePayload = result.med.expiryDates?.length
+        ? { expiryDates: newDates }
+        : { expiry: newDates[0] || "" };
+      await updateDoc(doc(db, "medicines", result.med.id), updatePayload);
+      await persistScanEdit({
+        ...(result.hasRealCode ? { code: result.med.code } : {}),
+        medicineId: result.med.id,
+        editedAt: new Date().toISOString(),
+        expiryChanged: true,
+        previousExpiryDates: previousDates,
+        newExpiryDates: newDates,
+      });
+      setMedicines((prev) => prev.map((m) => (m.id === result.med.id ? { ...m, ...updatePayload } : m)));
+      setEditingDateIndex(null);
+    } catch (err) {
+      console.error("Failed to save expiry date:", err);
+    } finally {
+      setSavingDate(false);
+    }
+  }
 
   async function handleAddToMawsool() {
     if (!result || result.notFound || result.alreadyInMawsool || justAddedToMawsool || addingToMawsool) return;
@@ -368,31 +420,67 @@ export default function ScannedMedicineCard({ scannedCode }) {
           {result.dates.map((d, i) => {
             const days = daysUntil(d);
             const st = STATUS_STYLE[result.statuses[i]] || STATUS_STYLE.Safe;
+            const isEditingThis = editingDateIndex === i;
             return (
               <React.Fragment key={i}>
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, py: 1 }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <CalendarMonthIcon sx={{ fontSize: 16, color: MUTED }} />
-                    <Typography sx={{ fontSize: 13.5, color: TEXT, fontWeight: 600 }}>{d || "—"}</Typography>
+                {isEditingThis ? (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, py: 1 }}>
+                    <CalendarMonthIcon sx={{ fontSize: 16, color: MUTED, flexShrink: 0 }} />
+                    <TextField
+                      type="date"
+                      size="small"
+                      value={dateDraft}
+                      onChange={(e) => setDateDraft(e.target.value)}
+                      sx={{ flex: 1 }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                    <IconButton size="small" color="primary" disabled={savingDate} onClick={() => handleSaveExpiryDate(i)}>
+                      <CheckIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" disabled={savingDate} onClick={() => setEditingDateIndex(null)}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
                   </Box>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    {d && days !== null && (
-                      <Typography sx={{ fontSize: 11.5, color: MUTED }}>
-                        {days >= 0 ? `${days}d left` : `${Math.abs(days)}d overdue`}
-                      </Typography>
-                    )}
-                    {d && (
-                      <Box sx={{
-                        display: "inline-flex", alignItems: "center", gap: 0.5,
-                        bgcolor: st.bg, color: st.text, fontWeight: 800, fontSize: 11,
-                        borderRadius: "999px", px: 1.1, py: 0.35,
-                      }}>
-                        <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: st.dot }} />
-                        {result.statuses[i]}
-                      </Box>
-                    )}
+                ) : (
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, py: 1 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <CalendarMonthIcon sx={{ fontSize: 16, color: MUTED }} />
+                      {d ? (
+                        <Typography sx={{ fontSize: 13.5, color: TEXT, fontWeight: 600 }}>{d}</Typography>
+                      ) : (
+                        <Box sx={{
+                          display: "inline-flex", alignItems: "center", gap: 0.5,
+                          bgcolor: "#F1F5F9", color: MUTED, fontWeight: 700, fontSize: 12,
+                          borderRadius: "999px", px: 1.1, py: 0.35,
+                        }}>
+                          No expiry date on file
+                        </Box>
+                      )}
+                    </Box>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      {d && days !== null && (
+                        <Typography sx={{ fontSize: 11.5, color: MUTED }}>
+                          {days >= 0 ? `${days}d left` : `${Math.abs(days)}d overdue`}
+                        </Typography>
+                      )}
+                      {d && (
+                        <Box sx={{
+                          display: "inline-flex", alignItems: "center", gap: 0.5,
+                          bgcolor: st.bg, color: st.text, fontWeight: 800, fontSize: 11,
+                          borderRadius: "999px", px: 1.1, py: 0.35,
+                        }}>
+                          <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: st.dot }} />
+                          {result.statuses[i]}
+                        </Box>
+                      )}
+                      {editable && !result.deleted && (
+                        <IconButton size="small" onClick={() => { setEditingDateIndex(i); setDateDraft(d || ""); }}>
+                          <EditIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      )}
+                    </Box>
                   </Box>
-                </Box>
+                )}
                 <Divider />
               </React.Fragment>
             );
