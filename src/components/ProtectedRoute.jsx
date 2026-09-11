@@ -35,7 +35,19 @@ export default function ProtectedRoute() {
   const [firebaseReady, setFirebaseReady] = useState(false);
 
   useEffect(() => {
-    authReady.finally(() => setFirebaseReady(true));
+    authReady
+      .catch((err) => {
+        // نطبع الخطأ بوضوح بدل ما نبلعه بصمت — لو تسجيل الدخول المجهول فشل
+        // فعليًا (زي مشكلة مفتاح API مرفوض من جوجل)، الصفحة بتفتح عادي بس
+        // كل قراءة/كتابة فايرستور برفضها القواعد الصارمة، فأقل شي نلقط
+        // الخطأ هنا بالكونسول فورًا بدل ما يضيع وسط عشرات الأخطاء الثانية
+        console.error(
+          "Anonymous sign-in failed — Firestore reads/writes will be rejected " +
+          "under strict security rules until this is fixed:",
+          err
+        );
+      })
+      .finally(() => setFirebaseReady(true));
   }, []);
 
   if (!isAuthenticated()) {
