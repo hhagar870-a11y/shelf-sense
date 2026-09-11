@@ -258,19 +258,33 @@ export default function ScannedMedicineCard({ scannedCode }) {
       )}
 
       {result?.notFound && (
-        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, color: "#96650A", fontSize: 14 }}>
-          <WarningAmberIcon sx={{ fontSize: 20, mt: "1px" }} />
-          <span>No medicine found for code <strong>"{result.code}"</strong>.</span>
+        <Box sx={{
+          display: "flex", alignItems: "flex-start", gap: 1, color: "#96650A", fontSize: 14,
+          bgcolor: "#FFF6E5", border: "1px solid #F5DFA6", borderRadius: "10px", px: 1.5, py: 1.25,
+        }}>
+          <WarningAmberIcon sx={{ fontSize: 20, mt: "1px", flexShrink: 0 }} />
+          <Box>
+            <Typography component="span" sx={{ fontSize: 14, fontWeight: 700, display: "block" }}>
+              No medicine found for code "{result.code}".
+            </Typography>
+            <Typography sx={{ fontSize: 12.5, color: "#96650A", mt: 0.5, lineHeight: 1.5 }}>
+              This isn't a system error — this code was either never added, or was permanently removed from inventory (including the trash bin). If it should still exist, please contact the pharmacy supervisor to add it back.
+            </Typography>
+          </Box>
         </Box>
       )}
 
       {result && !result.notFound && (
         <Box>
           {result.deleted && (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, color: MUTED }}>
-              <Inventory2Icon sx={{ fontSize: 16 }} />
-              <Typography sx={{ fontWeight: 700, fontSize: 12.5 }}>
-                No longer in inventory — showing last known information.
+            <Box sx={{
+              display: "flex", alignItems: "flex-start", gap: 1, mb: 2.5,
+              bgcolor: "#FDECEA", border: "1px solid #F6C6C2", borderRadius: "10px",
+              px: 1.5, py: 1.25,
+            }}>
+              <WarningAmberIcon sx={{ color: "#B3261E", fontSize: 19, mt: "1px", flexShrink: 0 }} />
+              <Typography sx={{ color: "#B3261E", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>
+                This medicine has been removed from inventory. The details below are its last known information.
               </Typography>
             </Box>
           )}
