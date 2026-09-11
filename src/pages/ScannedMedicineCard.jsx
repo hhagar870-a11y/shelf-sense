@@ -49,7 +49,7 @@ const TEXT = "#0F2A43";
 const MUTED = "#64748B";
 const BORDER = "#E7EAEE";
 
-function getStatus(expiry) {
+export function getStatus(expiry) {
   if (!expiry) return "";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -63,7 +63,7 @@ function getStatus(expiry) {
   return "Safe";
 }
 
-const STATUS_STYLE = {
+export const STATUS_STYLE = {
   Safe: { bg: "#E7F7EE", text: "#0F7A3D", dot: "#22C55E" },
   "Near Expiry": { bg: "#FFF6E5", text: "#96650A", dot: "#F59E0B" },
   Expired: { bg: "#FDECEA", text: "#B3261E", dot: "#EF4444" },
@@ -453,7 +453,7 @@ export default function ScannedMedicineCard({ scannedCode, editable = false }) {
                           bgcolor: "#F1F5F9", color: MUTED, fontWeight: 700, fontSize: 12,
                           borderRadius: "999px", px: 1.1, py: 0.35,
                         }}>
-                          No expiry date on file
+                          No expiry date on file for the latest batch added
                         </Box>
                       )}
                     </Box>
@@ -579,9 +579,24 @@ export default function ScannedMedicineCard({ scannedCode, editable = false }) {
                             </Typography>
                           </Box>
                           {h.expiryDates?.filter(Boolean).length > 0 && (
-                            <Typography sx={{ fontSize: 11.5, color: MUTED, mt: 0.25 }}>
-                              Expiry: {h.expiryDates.filter(Boolean).join(", ")}
-                            </Typography>
+                            // حالة ملوّنة (Safe/Near Expiry/Expired) لكل تاريخ انتهاء
+                            // بهذي الدفعة بالذات — عشان لو دفعة قديمة فيها كمية متبقية
+                            // على الرف حتى بعد وصول دفعة جديدة، يبين وضعها بوضوح لحاله
+                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.6, mt: 0.5 }}>
+                              {h.expiryDates.filter(Boolean).map((ed, di) => {
+                                const bst = STATUS_STYLE[getStatus(ed)] || STATUS_STYLE.Safe;
+                                return (
+                                  <Box key={di} sx={{
+                                    display: "inline-flex", alignItems: "center", gap: 0.5,
+                                    bgcolor: bst.bg, color: bst.text, fontWeight: 700, fontSize: 11,
+                                    borderRadius: "999px", px: 1, py: 0.3,
+                                  }}>
+                                    <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: bst.dot }} />
+                                    {ed} · {getStatus(ed)}
+                                  </Box>
+                                );
+                              })}
+                            </Box>
                           )}
                         </>
                       )}

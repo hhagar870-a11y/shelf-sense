@@ -19,11 +19,11 @@ import ChatBubbleOutlineIcon from "@mui/icons-material/Chat";
 
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-import JsBarcode from "jsbarcode";
+import QRCode from "qrcode";
 
 import { collection, getDocs, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
-import ScannedMedicineCard from "./ScannedMedicineCard";
+import ScannedMedicineCard, { getStatus, STATUS_STYLE } from "./ScannedMedicineCard";
 
 /* ============================================================
    SmartScan — the real "Scan" page (routed at /scan in App.jsx).
@@ -91,33 +91,24 @@ function formatHistoryDate(iso) {
   }
 }
 
-// باركود حقيقي (Code128) لكود الدواء يترسم بجانب صندوق التعديل — عشان
-// الصيدلي يقدر يمسحه بجواله (أو بأي قارئ باركود ثاني) بعد ما يحفظ التعديل،
-// ويتأكد إن الرسالة/الروابط اللي زادها فعلاً طلعت بصفحة نتيجة المسح، بدون
-// ما يحتاج يطبع ليبل تجريبي كل مرة يبي يتأكد من شكل النتيجة
-function MedicineBarcodePreview({ code }) {
+// QR حقيقي — نفس اللي يفتح فعليًا لما حد يمسح ملصق الرف (مو باركود خطي).
+// نشفّر فيه نفس رابط /scan-result اللي يوديه لصفحة QRLanding، عشان لما
+// يمسحه بجواله يشوف بالضبط نفس اللي بيشوفه أي حد يمسح الملصق المطبوع —
+// نفس الرسالة والروابط اللي عدّلها هنا، لحظة بلحظة، بدون طباعة تجريبية
+function MedicineQrPreview({ url }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
-    if (!canvasRef.current || !code) return;
-    try {
-      JsBarcode(canvasRef.current, String(code), {
-        format: "CODE128",
-        width: 2,
-        height: 55,
-        displayValue: true,
-        fontSize: 12,
-        margin: 6,
-      });
-    } catch (err) {
-      console.error("Failed to render barcode preview:", err);
-    }
-  }, [code]);
+    if (!canvasRef.current || !url) return;
+    QRCode.toCanvas(canvasRef.current, url, { width: 170, margin: 1 }, (err) => {
+      if (err) console.error("Failed to render QR preview:", err);
+    });
+  }, [url]);
 
-  if (!code) {
+  if (!url) {
     return (
       <Typography variant="caption" sx={{ color: "#9ca3af" }}>
-        This medicine has no NUPCO code, so no barcode can be generated for it.
+        This medicine has no NUPCO code, so no scannable QR can be generated for it.
       </Typography>
     );
   }
@@ -221,9 +212,10 @@ function EditQrContentDialog({ open, onClose, medicine, onSaved }) {
   }
 
   const hasRealCode = medicine?.code && medicine.code !== "No Code Available";
-  const previewHref = medicine
-    ? `/scan-result?code=${encodeURIComponent(hasRealCode ? medicine.code : "")}&msg=${encodeURIComponent(qrIdFor(medicine))}`
-    : "#";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const previewUrl = medicine
+    ? `${origin}/scan-result?code=${encodeURIComponent(hasRealCode ? medicine.code : "")}&msg=${encodeURIComponent(qrIdFor(medicine))}`
+    : "";
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -286,11 +278,11 @@ function EditQrContentDialog({ open, onClose, medicine, onSaved }) {
               Scan to preview
             </Typography>
             <Box sx={{ display: "flex", justifyContent: "center", p: 1.5, border: "1px dashed #cbd5e1", borderRadius: 1.5, mb: 1, bgcolor: "#fff" }}>
-              <MedicineBarcodePreview code={hasRealCode ? medicine.code : ""} />
+              <MedicineQrPreview url={hasRealCode ? previewUrl : ""} />
             </Box>
             <Button
               fullWidth size="small" variant="outlined"
-              component="a" href={previewHref} target="_blank" rel="noopener noreferrer"
+              component="a" href={previewUrl || "#"} target="_blank" rel="noopener noreferrer"
               sx={{ textTransform: "none", mb: 2.5 }}
             >
               Open live preview page
@@ -305,21 +297,44 @@ function EditQrContentDialog({ open, onClose, medicine, onSaved }) {
               <Typography variant="body2" sx={{ color: "#9ca3af" }}>No history recorded yet.</Typography>
             ) : (
               <Box sx={{ maxHeight: 260, overflowY: "auto" }}>
-                {history.map((h) => (
-                  <Box key={h.id} sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, py: 1, borderBottom: "1px solid #f1f5f9" }}>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>
-                        {h.kind === "batch" ? `Qty: ${h.quantity}` : "Edited"}
-                      </Typography>
-                      <Typography sx={{ fontSize: 11, color: "#9ca3af" }}>
-                        {formatHistoryDate(h.importedAt || h.editedAt)}
-                      </Typography>
+                {history.map((h) => {
+                  const batchExpiries = h.kind === "batch" ? (h.expiryDates || []).filter(Boolean) : [];
+                  return (
+                    <Box key={h.id} sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, py: 1, borderBottom: "1px solid #f1f5f9" }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>
+                          {h.kind === "batch" ? `Qty: ${h.quantity}` : "Edited"}
+                        </Typography>
+                        <Typography sx={{ fontSize: 11, color: "#9ca3af" }}>
+                          {formatHistoryDate(h.importedAt || h.editedAt)}
+                        </Typography>
+                        {/* حالة ملوّنة (Safe/Near Expiry/Expired) لكل تاريخ انتهاء
+                            مرفق بهذي الدفعة بالذات — مهم لأن دفعة قديمة ممكن يفضل
+                            منها كمية متبقية بالرف حتى بعد ما توصل دفعة جديدة فوقها */}
+                        {batchExpiries.length > 0 && (
+                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
+                            {batchExpiries.map((ed, di) => {
+                              const st = STATUS_STYLE[getStatus(ed)] || STATUS_STYLE.Safe;
+                              return (
+                                <Box key={di} sx={{
+                                  display: "inline-flex", alignItems: "center", gap: 0.4,
+                                  bgcolor: st.bg, color: st.text, fontWeight: 700, fontSize: 10.5,
+                                  borderRadius: "999px", px: 0.9, py: 0.25,
+                                }}>
+                                  <Box sx={{ width: 5, height: 5, borderRadius: "50%", bgcolor: st.dot }} />
+                                  {ed} · {getStatus(ed)}
+                                </Box>
+                              );
+                            })}
+                          </Box>
+                        )}
+                      </Box>
+                      <IconButton size="small" onClick={() => handleDeleteHistoryEntry(h)}>
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
                     </Box>
-                    <IconButton size="small" onClick={() => handleDeleteHistoryEntry(h)}>
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             )}
           </Box>
