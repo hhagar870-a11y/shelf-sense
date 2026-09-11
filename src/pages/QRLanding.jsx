@@ -72,7 +72,7 @@ export default function QRLanding() {
               <Box sx={{ fontSize: 14, color: "#0F2A43" }} dangerouslySetInnerHTML={{ __html: messageHtml }} />
             ) : (
               <Typography sx={{ fontSize: 14, color: "#9ca3af" }}>
-                لا يوجد أي ملاحظات أو تعليقات
+               No message content was provided for this QR code.
               </Typography>
             )}
 
