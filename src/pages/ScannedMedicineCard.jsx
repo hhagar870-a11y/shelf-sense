@@ -6,6 +6,7 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import HistoryIcon from "@mui/icons-material/History";
+import EditIcon from "@mui/icons-material/Edit";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
 import { useNavigate } from "react-router-dom";
@@ -109,6 +110,7 @@ export default function ScannedMedicineCard({ scannedCode }) {
   const [medicines, setMedicines] = useState([]);
   const [trashMedicines, setTrashMedicines] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [editLogs, setEditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const inputRef = React.useRef(null);
@@ -122,14 +124,16 @@ export default function ScannedMedicineCard({ scannedCode }) {
   useEffect(() => {
     async function fetchMedicines() {
       try {
-        const [medsSnap, trashSnap, batchesSnap] = await Promise.all([
+        const [medsSnap, trashSnap, batchesSnap, editLogSnap] = await Promise.all([
           getDocs(collection(db, "medicines")),
           getDocs(collection(db, "medicines_trash")),
           getDocs(collection(db, "medicineBatches")),
+          getDocs(collection(db, "medicineEditLog")),
         ]);
         setMedicines(medsSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !m.isSection));
         setTrashMedicines(trashSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !m.isSection));
         setBatches(batchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setEditLogs(editLogSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error("Failed to load medicines from Firestore:", err);
       } finally {
@@ -173,6 +177,13 @@ export default function ScannedMedicineCard({ scannedCode }) {
       .filter((b) => (hasRealCode && b.code === med.code) || b.medicineId === med.id)
       .sort((a, b) => new Date(b.importedAt) - new Date(a.importedAt));
     const lastBatch = history[0] || null;
+    // تعديلات يدوية (أيقونة القلم) على نفس الدواء — منفصلة تمامًا عن
+    // الشحنات الحقيقية، بس نعرضها بنفس الخط الزمني عشان يبين "وش صار ومتى"
+    const edits = editLogs.filter((e) => (hasRealCode && e.code === med.code) || e.medicineId === med.id);
+    const timeline = [
+      ...history.map((h) => ({ ...h, kind: "batch", when: h.importedAt })),
+      ...edits.map((e) => ({ ...e, kind: "edit", when: e.editedAt })),
+    ].sort((a, b) => new Date(b.when) - new Date(a.when));
     // لو الدواء موجود بالمخزون الحي، الفلاق يجي منه مباشرة. لو محذوف
     // (بسلة المهملات)، ما فيه مستند حي نتأكد منه، فندور بقائمة الأدوية
     // الحية عن أي مستند "طلب خارجي" اتضاف قبل بنفس الكود عشان ما نكرر
@@ -180,8 +191,8 @@ export default function ScannedMedicineCard({ scannedCode }) {
     const alreadyInMawsool = !deleted
       ? !!med.mawsoolOrder
       : medicines.some((m) => hasRealCode && m.code === med.code && m.mawsoolOrder);
-    return { med, dates, statuses, categories, otherNames, history, lastBatch, deleted, hasRealCode, alreadyInMawsool };
-  }, [codeToLookup, medicines, trashMedicines, batches, loading]);
+    return { med, dates, statuses, categories, otherNames, history, timeline, lastBatch, deleted, hasRealCode, alreadyInMawsool };
+  }, [codeToLookup, medicines, trashMedicines, batches, editLogs, loading]);
 
   const [addingToMawsool, setAddingToMawsool] = useState(false);
   const [justAddedToMawsool, setJustAddedToMawsool] = useState(false);
@@ -417,7 +428,7 @@ export default function ScannedMedicineCard({ scannedCode }) {
               : addingToMawsool ? "Adding…" : "Add to Mawsool order"}
           </Box>
 
-          {result.history.length > 0 && (
+          {result.timeline.length > 0 && (
             <Box sx={{ mt: 3 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1.5 }}>
                 <HistoryIcon sx={{ fontSize: 16, color: MUTED }} />
@@ -435,29 +446,60 @@ export default function ScannedMedicineCard({ scannedCode }) {
 
               <Box sx={{ position: "relative", pl: 2.5 }}>
                 <Box sx={{ position: "absolute", left: 5, top: 6, bottom: 6, width: "2px", bgcolor: BORDER }} />
-                {result.history.map((h, i) => (
-                  <Box key={h.id} sx={{ position: "relative", pb: i === result.history.length - 1 ? 0 : 1.5 }}>
-                    <Box sx={{
-                      position: "absolute", left: -20.5, top: 4,
-                      width: 11, height: 11, borderRadius: "50%",
-                      bgcolor: i === 0 ? ACCENT : "#fff",
-                      border: `2px solid ${i === 0 ? ACCENT : BORDER}`,
-                    }} />
-                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 0.5 }}>
-                      <Typography sx={{ fontSize: 13, fontWeight: 800, color: TEXT }}>
-                        Qty: {h.quantity}
-                      </Typography>
-                      <Typography sx={{ fontSize: 11.5, color: MUTED }}>
-                        {formatDate(h.importedAt)}
-                      </Typography>
+                {result.timeline.map((h, i) => {
+                  const isEdit = h.kind === "edit";
+                  return (
+                    <Box key={h.id} sx={{ position: "relative", pb: i === result.timeline.length - 1 ? 0 : 1.5 }}>
+                      <Box sx={{
+                        position: "absolute", left: -20.5, top: 4,
+                        width: 11, height: 11, borderRadius: "50%",
+                        bgcolor: isEdit ? "#fff" : (i === 0 ? ACCENT : "#fff"),
+                        border: `2px solid ${isEdit ? "#94A3B8" : (i === 0 ? ACCENT : BORDER)}`,
+                      }} />
+                      {isEdit ? (
+                        <>
+                          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 0.5 }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                              <EditIcon sx={{ fontSize: 12, color: "#94A3B8" }} />
+                              <Typography sx={{ fontSize: 13, fontWeight: 800, color: MUTED }}>
+                                Edited
+                              </Typography>
+                            </Box>
+                            <Typography sx={{ fontSize: 11.5, color: MUTED }}>
+                              {formatDate(h.editedAt)}
+                            </Typography>
+                          </Box>
+                          {h.quantityChanged && (
+                            <Typography sx={{ fontSize: 11.5, color: MUTED, mt: 0.25 }}>
+                              Quantity: {h.previousQuantity || "—"} → {h.newQuantity || "—"}
+                            </Typography>
+                          )}
+                          {h.expiryChanged && (
+                            <Typography sx={{ fontSize: 11.5, color: MUTED, mt: 0.25 }}>
+                              Expiry: {(h.previousExpiryDates || []).join(", ") || "—"} → {(h.newExpiryDates || []).join(", ") || "—"}
+                            </Typography>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 0.5 }}>
+                            <Typography sx={{ fontSize: 13, fontWeight: 800, color: TEXT }}>
+                              Qty: {h.quantity}
+                            </Typography>
+                            <Typography sx={{ fontSize: 11.5, color: MUTED }}>
+                              {formatDate(h.importedAt)}
+                            </Typography>
+                          </Box>
+                          {h.expiryDates?.filter(Boolean).length > 0 && (
+                            <Typography sx={{ fontSize: 11.5, color: MUTED, mt: 0.25 }}>
+                              Expiry: {h.expiryDates.filter(Boolean).join(", ")}
+                            </Typography>
+                          )}
+                        </>
+                      )}
                     </Box>
-                    {h.expiryDates?.filter(Boolean).length > 0 && (
-                      <Typography sx={{ fontSize: 11.5, color: MUTED, mt: 0.25 }}>
-                        Expiry: {h.expiryDates.filter(Boolean).join(", ")}
-                      </Typography>
-                    )}
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             </Box>
           )}

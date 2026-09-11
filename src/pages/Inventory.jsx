@@ -146,6 +146,17 @@ async function persistMedicineBatches(batchLog) {
   }
 }
 
+// مجموعة منفصلة تمامًا عن medicineBatches — لما حد يعدّل كمية أو تاريخ
+// انتهاء دواء موجود مباشرة (أيقونة القلم بصفحة Inventory)، هذا تصحيح/تعديل
+// يدوي، مو شحنة فعلية وصلت من المورد. نسجله هنا بوضوح (وش كان ووش صار)
+// عشان هيستوري صفحة المسح يقدر يفرّق بينه وبين شحنة حقيقية، بدل ما يظهر
+// وكأنه كمية جديدة استلمناها فعليًا
+const MEDICINE_EDIT_LOG_COLLECTION = "medicineEditLog";
+async function persistMedicineEdit(entry) {
+  if (!entry) return;
+  await setDoc(doc(db, MEDICINE_EDIT_LOG_COLLECTION, crypto.randomUUID()), entry);
+}
+
 // يحذف مستند دواء واحد فورًا من فايرستور — نستخدمها مباشرة وقت الحذف بدل
 // ما ننتظر المزامنة العامة (اللي صارت الآن مؤجّلة/debounced، فممكن تتأخر
 // نص ثانية أو أكثر). هذا يضمن إن الدواء المحذوف يختفي فعليًا من السيرفر
@@ -983,6 +994,40 @@ const handleLabelSave = () => {
   setLabelOpen(false);
   setLabelName("");
 };
+  // ⭐ تعديل مباشر (أيقونة القلم) على دواء موجود — قبل كان ما يسجل شيء
+  // بأي هيستوري إطلاقًا، فالتغيير يصير بصفحة Inventory بس يختفي تمامًا من
+  // صفحة المسح. نسجله الحين كـ"تعديل" واضح (وش كان ووش صار) — مو كشحنة
+  // جديدة استلمناها — وبس لو فعلاً تغيّرت الكمية أو تاريخ الانتهاء، مو لأي
+  // تعديل ثاني بسيط (اسم، رف، تصنيف...)
+  const previousMedForEdit = medicines.find((m) => m.id === editIndex);
+  if (previousMedForEdit) {
+    const prevQty = String(previousMedForEdit.quantity ?? "").trim();
+    const newQty = String(newMedicine.quantity ?? "").trim();
+    const prevExpiryDates = (
+      previousMedForEdit.expiryDates?.length
+        ? previousMedForEdit.expiryDates
+        : [previousMedForEdit.expiry]
+    ).filter(Boolean);
+    const newExpiryDates = newMedicine.expiryDates.filter((d) => d);
+    const quantityChanged = prevQty !== newQty;
+    const expiryChanged = JSON.stringify(prevExpiryDates) !== JSON.stringify(newExpiryDates);
+
+    if (quantityChanged || expiryChanged) {
+      persistMedicineEdit({
+        medicineId: previousMedForEdit.id,
+        medicineName: newMedicine.name,
+        code: newMedicine.code || "",
+        quantityChanged,
+        previousQuantity: prevQty,
+        newQuantity: newQty,
+        expiryChanged,
+        previousExpiryDates: prevExpiryDates,
+        newExpiryDates,
+        editedAt: new Date().toISOString(),
+      }).catch((err) => console.error("Failed to save edit history:", err));
+    }
+  }
+
   setMedicines(updatedMedicines);
   setEditIndex(null);
 } else if (isDualCodeEntry) {
@@ -1371,7 +1416,11 @@ const processExcelImport = (rows, baseMedicines, batchLog) => {
           medicineName: officialName,
           code: itemCode || "",
           quantity: itemQty,
-          expiryDates: expiryDates.length ? expiryDates : (med.expiry ? [med.expiry] : []),
+          // سجل هذي الشحنة بالذات لازم يعكس التاريخ اللي جا معها فعليًا بهذا
+          // السطر بس — لو ما فيه تاريخ نسجلها فاضية، مو تاريخ آخر شحنة سابقة
+          // كانت مسجلة للدواء (قبل كان يرجع لـ med.expiry فيطلع وكأن الشحنة
+          // الجديدة الها نفس تاريخ انتهاء اللي قبلها بالغلط)
+          expiryDates: expiryDates,
           importedAt,
         });
       }
@@ -3841,7 +3890,11 @@ return (
                 medicineName: med.name,
                 code: med.code || "",
                 quantity: newQtyStr,
-                expiryDates: incomingDates.length ? incomingDates : combinedDates,
+                // نفس إصلاح processExcelImport: سجل الشحنة الجديدة يعكس بس
+                // التاريخ اللي اتكتب لها هي بالذات، مو combinedDates اللي
+                // يشمل تواريخ الدواء القديمة — وإلا تطلع الشحنة الجديدة
+                // بتاريخ انتهاء الشحنة السابقة بالغلط
+                expiryDates: incomingDates,
                 importedAt,
               });
             }
