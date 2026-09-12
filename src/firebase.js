@@ -7,8 +7,11 @@ import {
 import { getAuth, signInAnonymously } from "firebase/auth";
 
 // بيانات الإعدادات الخاصة بمشروعك من لوحة تحكم فايربيس
+// ⚠️ apiKey انصلح هنا — كان فيه حرفين بالخطأ كبار (Z, L) بدل صغار (z, l)،
+// ومفاتيح فايربيس حساسة لحالة الأحرف، فكان هذا وحده كافي يخلي جوجل ترفض
+// المفتاح بالكامل (auth/api-key-not-valid) ويفشل signInAnonymously دائمًا
 const firebaseConfig = {
-  apiKey: "AIzaSyAdNRLZvbEjG9iFcaR_ItPp5LCvXFGqCxg",
+  apiKey: "AIzaSyAdNRLzvbEjG9iFcaR_ItPp5lCvXFGqCxg",
   authDomain: "shelfsense-10c69.firebaseapp.com",
   projectId: "shelfsense-10c69",
   storageBucket: "shelfsense-10c69.appspot.com",
