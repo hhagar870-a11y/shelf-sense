@@ -953,6 +953,30 @@ const handleToggleMawsool = (id) => {
 // قبل الحفظ، حتى لو المستخدم ما طلع من الحقل (onBlur) بعد الكتابة مباشرة
 newMedicine.expiryDates = newMedicine.expiryDates.map((d) => parseFlexibleDate(d));
 
+// توحيد الاسم حسب كود نيبكو: لو الكود يطابق دواء معروف بقاعدة بيانات
+// الوزارة، الاسم المعتمد (name) لازم يفضل نفس اسم الوزارة الرسمي دائمًا —
+// حتى لو المستخدم عدّل خانة الاسم يدويًا بعد التعبئة التلقائية (زي ما صار:
+// تعبّت تلقائيًا، وبعدين انضاف عليها "test" يدويًا). أي نص كتبه المستخدم
+// ويختلف عن الاسم الرسمي يترحّل كـ"اسم بديل" (يبان بأيقونة i بجانب الاسم)
+// بدل ما يصير هو الاسم المعروض بالجدول — بنفس فكرة أسماء الموردين البديلة
+// اللي يجمعها استيراد الإكسل تلقائيًا أصلاً
+let userTypedAlternateName = null;
+const cleanCodeForLookup = String(newMedicine.code || "").trim();
+if (cleanCodeForLookup) {
+  const officialNameForCode =
+    ministryDatabase[cleanCodeForLookup] ||
+    ministryDatabase[
+      Object.keys(ministryDatabase).find(
+        (key) => key.split(".")[0] === cleanCodeForLookup.split(".")[0]
+      )
+    ];
+  const typedName = String(newMedicine.name || "").trim();
+  if (officialNameForCode && typedName && officialNameForCode.trim().toLowerCase() !== typedName.toLowerCase()) {
+    userTypedAlternateName = typedName;
+    newMedicine.name = officialNameForCode;
+  }
+}
+
 if (editIndex !== null) {
   // editIndex الحين يخزن id الدواء (مو رقم موقعه بالجدول) لنفس سبب مشكلة
   // الحذف: رقم الصف اللي يشوفه المستخدم يختلف عن موقع الدواء بالمصفوفة
@@ -960,11 +984,16 @@ if (editIndex !== null) {
   const updatedMedicines = [...medicines];
   const targetIndex = updatedMedicines.findIndex((m) => m.id === editIndex);
   if (targetIndex !== -1) {
+    const existingOtherNames = updatedMedicines[targetIndex].otherNames || [];
+    const mergedOtherNames = userTypedAlternateName && !existingOtherNames.includes(userTypedAlternateName)
+      ? [...existingOtherNames, userTypedAlternateName]
+      : existingOtherNames;
     updatedMedicines[targetIndex] = {
       ...newMedicine,
       id: updatedMedicines[targetIndex].id,
       expiry: newMedicine.expiryDates[0] || "",
       categories: getDrugCategories(newMedicine.name, newMedicine.code),
+      otherNames: mergedOtherNames,
     };
   }
 
@@ -1150,14 +1179,13 @@ const handleLabelSave = () => {
         quantities: [newMedicine.quantity],
         categories: getDrugCategories(newMedicine.name, newMedicine.code),
         labels: [],
-        otherNames: [newMedicine.name],
+        otherNames: userTypedAlternateName ? [newMedicine.name, userTypedAlternateName] : [newMedicine.name],
         dateAdded: new Date().toISOString(),
       },
     ];
     setMedicines(updatedMedicines);
 
-    // ⭐ هذا هو السبب الحقيقي وراء "أول شحنة ما تظهر بالهيستوري": هذا
-    // الفرع يشتغل لما الكود ما يتطابق مع أي دواء بالمخزون الحي — يشمل
+    // ⭐ هذا الفرع يشتغل لما الكود ما يتطابق مع أي دواء بالمخزون الحي — يشمل
     // دواء جديد كليًا، وكمان دواء كان موجود بس بسلة المهملات فقط (الفحص
     // فوق يدوّر بقائمة medicines الحية بس، ما يدوّر بالتراش)، فيتولد له id
     // جديد تمامًا ويُعامل كدواء جديد. قبل، هذا الفرع ما كان يسجل الكمية
@@ -2977,6 +3005,15 @@ return (
           const to = Math.min(medicinesOnlyCount, (page + 1) * rowsPerPage);
           const pageNumbers = getPaginationPageNumbers(currentPage, totalPages);
 
+          // كل تنقل بين الصفحات (رقم صفحة، التالي، السابق، أول/آخر صفحة)
+          // يطلع فوق الصفحة تلقائيًا — قبل كذا كنتِ تضلين بمكان زر التنقل
+          // نفسه (تحت) وتحتاجين تسكرولين يدويًا عشان تشوفين بيانات الصفحة
+          // الجديدة من الأول
+          const goToPage = (newPage) => {
+            setPage(newPage);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          };
+
           const pageButtonSx = (active) => ({
             minWidth: 34,
             height: 34,
@@ -3035,7 +3072,7 @@ return (
                     <IconButton
                       size="small"
                       disabled={page === 0}
-                      onClick={() => setPage(0)}
+                      onClick={() => goToPage(0)}
                       sx={pageButtonSx(false)}
                     >
                       <KeyboardDoubleArrowLeftIcon fontSize="small" />
@@ -3047,7 +3084,7 @@ return (
                     <IconButton
                       size="small"
                       disabled={page === 0}
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                      onClick={() => goToPage(Math.max(0, page - 1))}
                       sx={pageButtonSx(false)}
                     >
                       <ChevronLeftIcon fontSize="small" />
@@ -3063,7 +3100,7 @@ return (
                   ) : (
                     <Button
                       key={p}
-                      onClick={() => setPage(p - 1)}
+                      onClick={() => goToPage(p - 1)}
                       sx={pageButtonSx(p === currentPage)}
                     >
                       {p}
@@ -3076,7 +3113,7 @@ return (
                     <IconButton
                       size="small"
                       disabled={page >= totalPages - 1}
-                      onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                      onClick={() => goToPage(Math.min(totalPages - 1, page + 1))}
                       sx={pageButtonSx(false)}
                     >
                       <ChevronRightIcon fontSize="small" />
@@ -3088,7 +3125,7 @@ return (
                     <IconButton
                       size="small"
                       disabled={page >= totalPages - 1}
-                      onClick={() => setPage(totalPages - 1)}
+                      onClick={() => goToPage(totalPages - 1)}
                       sx={pageButtonSx(false)}
                     >
                       <KeyboardDoubleArrowRightIcon fontSize="small" />
